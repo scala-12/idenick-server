@@ -1,0 +1,7 @@
+/.settings/org.eclipse.core.resources.prefs
+
+/idenick_app/migrations
+
+/idenick_app/__pycache__
+/idenick_project/__pycache__
+/idenick_rest_api_v0/__pycache__
