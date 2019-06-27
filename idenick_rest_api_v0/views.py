@@ -1,3 +1,5 @@
+from abc import abstractmethod
+
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
@@ -9,32 +11,38 @@ from idenick_rest_api_v0.serializers import OrganizationSerializer, DepartmentSe
 
 
 # from rest_framework.permissions import IsAuthen
-def _get_serializer_class(self):
-    return self.serializer_classes[self.action]
+class __AbstractViewSet(viewsets.ViewSet):
+
+    def get_serializer_class(self):
+        return self.serializer_classes[self.action]
+    
+    def _list(self, queryset):
+        serializer = self.get_serializer_class()(queryset, many=True)
+        return Response(serializer.data)
+    
+    def _retrieve(self, queryset, pk=None):
+        entity = get_object_or_404(queryset, pk=pk)
+        serializer = self.get_serializer_class()(entity)
+        return Response(serializer.data)
 
 
 # for admin
-class OrganizationViewSet(viewsets.ViewSet):
+class OrganizationViewSet(__AbstractViewSet):
     serializer_classes = {
-        'list': OrganizationSerializer,
-        'retrieve': OrganizationSerializer,
+        'list': OrganizationSerializer.ShortSerializer,
+        'retrieve': OrganizationSerializer.FullSerializer,
         'create': OrganizationSerializer.CreateSerializer,
         'partial_update': OrganizationSerializer.CreateSerializer,
     }
 
     def list(self, request):
-        queryset = Organization.objects.all()
-        serializer = _get_serializer_class(self)(queryset, many=True)
-        return Response(serializer.data)
+        return self._list(Organization.objects.all())
     
     def retrieve(self, request, pk=None):
-        queryset = Organization.objects.all()
-        organization = get_object_or_404(queryset, pk=pk)
-        serializer = _get_serializer_class(self)(organization)
-        return Response(serializer.data)
+        return self._retrieve(Organization.objects.all(), pk)
     
     def create(self, request):
-        serializer_class = _get_serializer_class(self)
+        serializer_class = self.get_serializer_class()
         serializer = serializer_class(data=request.data)
         result = None
         if serializer.is_valid():
@@ -54,7 +62,7 @@ class OrganizationViewSet(viewsets.ViewSet):
         queryset = Organization.objects.all()
         organization = get_object_or_404(queryset, pk=pk)
         
-        serializer_class = _get_serializer_class(self)
+        serializer_class = self.get_serializer_class()
         serializer = serializer_class(data=request.data)
         update = Organization(**serializer.data)
         result = None
@@ -83,38 +91,31 @@ class OrganizationViewSet(viewsets.ViewSet):
 
 # for controller
 # for register
-class DepartmentViewSet(viewsets.ViewSet):
+class DepartmentViewSet(__AbstractViewSet):
     serializer_classes = {
-        'list': DepartmentSerializer,
-        'retrieve': DepartmentSerializer,
+        'list': DepartmentSerializer.ShortSerializer,
+        'retrieve': DepartmentSerializer.FullSerializer,
         'create': DepartmentSerializer.CreateSerializer,
         'partial_update': DepartmentSerializer.UpdateSerializer,
     }
 
-    @staticmethod
-    def __get_queryset(request):
+    def __get_queryset(self, request):
         login = Login.objects.get(user=request.user)
         result = None
         if login.type == Login.SUPERUSER:
             result = Department.objects.all()
-        elif (login.type == Login.CONTROLLER) or (login.type == Login.REGISTER):
+        elif (login.type == Login.CONTROLLER) or (login.type == Login.REGISTRATOR):
             result = Department.objects.filter(organization=login.organization)
         return result
 
     def list(self, request):
-        queryset = DepartmentViewSet.__get_queryset(request)
-
-        serializer = _get_serializer_class(self)(queryset, many=True)
-        return Response(serializer.data)
+        return self._list(self.__get_queryset(request))
     
     def retrieve(self, request, pk=None):
-        queryset = DepartmentViewSet.__get_queryset(request)
-        department = get_object_or_404(queryset, pk=pk)
-        serializer = _get_serializer_class(self)(department)
-        return Response(serializer.data)
+        return self._retrieve(self.__get_queryset(request), pk)
     
     def create(self, request):
-        serializer_class = _get_serializer_class(self)
+        serializer_class = self.get_serializer_class()
         serializer = serializer_class(data=request.data)
         result = None
         
@@ -135,7 +136,7 @@ class DepartmentViewSet(viewsets.ViewSet):
         queryset = Department.objects.all()
         department = get_object_or_404(queryset, pk=pk)
         
-        serializer_class = _get_serializer_class(self)
+        serializer_class = self.get_serializer_class()
         serializer = serializer_class(data=request.data)
         update = Department(**serializer.data)
         result = None
@@ -164,16 +165,15 @@ class DepartmentViewSet(viewsets.ViewSet):
 
 
 # for controller
-class EmployeeViewSet(viewsets.ViewSet):
+class EmployeeViewSet(__AbstractViewSet):
     serializer_classes = {
-        'list': EmployeeSerializer,
-        'retrieve': EmployeeSerializer,
+        'list': EmployeeSerializer.ShortSerializer,
+        'retrieve': EmployeeSerializer.FullSerializer,
         'create': EmployeeSerializer.CreateSerializer,
         'partial_update': EmployeeSerializer.CreateSerializer,
     }
     
-    @staticmethod
-    def __get_queryset(request):
+    def __get_queryset(self, request):
         login = Login.objects.get(user=request.user)
 
         result = None
@@ -193,19 +193,13 @@ class EmployeeViewSet(viewsets.ViewSet):
         return result
 
     def list(self, request):
-        queryset = EmployeeViewSet.__get_queryset(request)
-        
-        serializer = _get_serializer_class(self)(queryset, many=True)
-        return Response(serializer.data)
-        
+        return self._list(self.__get_queryset(request))
+    
     def retrieve(self, request, pk=None):
-        queryset = EmployeeViewSet.__get_queryset(request)
-        employee = get_object_or_404(queryset, pk=pk)
-        serializer = _get_serializer_class(self)(employee)
-        return Response(serializer.data)
+        return self._retrieve(self.__get_queryset(request), pk)
     
     def create(self, request):
-        serializer_class = _get_serializer_class(self)
+        serializer_class = self.get_serializer_class()
         serializer = serializer_class(data=request.data)
         result = None
         
@@ -229,7 +223,7 @@ class EmployeeViewSet(viewsets.ViewSet):
         queryset = Employee.objects.all()
         employee = get_object_or_404(queryset, pk=pk)
         
-        serializer_class = _get_serializer_class(self)
+        serializer_class = self.get_serializer_class()
         serializer = serializer_class(data=request.data)
         result = None
         if serializer.is_valid():
@@ -255,67 +249,57 @@ class EmployeeViewSet(viewsets.ViewSet):
         return Response({'message': 'Employee was deleted', 'data': self.serializer_classes.get('retrieve', None)(employee).data})
 
 
-@staticmethod
-def _create_user(self, request, organization_id, type):
-    serializer_class = _get_serializer_class(self)
-    serializer = serializer_class(data=request.data)
-    result = None
-    
-    if serializer.is_valid():
-        user = User(**serializer.data)
-        if user.username and user.password:
-            user.save()
-            login = Login.objects.get(user=user)
-            login.organization = Organization.objects.get(id=organization_id)
-            login.type = type
-            login.save()
-            result = Response({'data': self.serializer_classes.get('retrieve', None)(login).data})
-        else:
-            result = Response({'message': 'Name is empty', 'status': status.HTTP_400_BAD_REQUEST})
-        
-    return result
-
-
-# for admin
-class RegisterViewSet(viewsets.ViewSet):
+class UserViewSet(__AbstractViewSet):
     serializer_classes = {
-        'list': LoginSerializer,
-        'retrieve': LoginSerializer,
+        'list': LoginSerializer.ShortSerializer,
+        'retrieve': LoginSerializer.ShortSerializer,
         'create': LoginSerializer.CreateSerializer,
         'partial_update': LoginSerializer.UpdateSerializer,
     }
     
-    __get_queryset = lambda organization_id : Login.objects.filter(organization__id=organization_id).filter(type=Login.REGISTER)
+    @abstractmethod
+    def _user_type(self):
+        pass
+    
+    def __get_queryset(self, organization_id):
+        return Login.objects.filter(organization__id=organization_id).filter(type=self._user_type())
 
     def list(self, request, organization_id):
-        queryset = RegisterViewSet.__get_queryset(organization_id)
-        serializer = LoginSerializer(queryset, many=True)
-        return Response(serializer.data)
-        
+        return self._list(self.__get_queryset(organization_id=organization_id))
+    
     def retrieve(self, request, organization_id, pk=None):
-        queryset = RegisterViewSet.__get_queryset(organization_id)
-        login = get_object_or_404(queryset, pk=pk)
-        serializer = LoginSerializer(login)
-        return Response(serializer.data)
+        return self._retrieve(self.__get_queryset(organization_id=organization_id), pk)
     
     def create(self, request, organization_id):
-        return _create_user(self, request, organization_id, Login.REGISTER)
+        serializer_class = self.get_serializer_class()
+        serializer = serializer_class(data=request.data)
+        result = None
+        
+        if serializer.is_valid():
+            user = User(**serializer.data)
+            if user.username and user.password:
+                user.save()
+                login = Login.objects.get(user=user)
+                login.organization = Organization.objects.get(id=organization_id)
+                login.type = self._user_type()
+                login.save()
+                result = Response({'data': self.serializer_classes.get('retrieve', None)(login).data})
+            else:
+                result = Response({'message': 'Name is empty', 'status': status.HTTP_400_BAD_REQUEST})
+            
+        return result
+
+
+# for admin
+class RegisterViewSet(UserViewSet):
+
+    def _user_type(self):
+        return Login.REGISTRATOR
 
 
 # for register
-class ControllerViewSet(viewsets.ViewSet):
-    __get_queryset = lambda organization_id : Login.objects.filter(organization__id=organization_id).filter(type=Login.CONTROLLER)
+class ControllerViewSet(UserViewSet):
 
-    def list(self, request, organization_id):
-        queryset = ControllerViewSet.__get_queryset(organization_id)
-        serializer = LoginSerializer(queryset, many=True)
-        return Response(serializer.data)
-        
-    def retrieve(self, request, organization_id, pk=None):
-        queryset = ControllerViewSet.__get_queryset(organization_id)
-        login = get_object_or_404(queryset, pk=pk)
-        serializer = LoginSerializer(login)
-        return Response(serializer.data)
-    
-    def create(self, request, organization_id):
-        return _create_user(self, request, organization_id, Login.CONTROLLER)
+    def _user_type(self):
+        return Login.CONTROLLER
+

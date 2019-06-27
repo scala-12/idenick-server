@@ -6,7 +6,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 
-class AbstractEntry4New(models.Model):    
+class _AbstractEntry(models.Model):    
     id = models.AutoField(primary_key=True)
     created_at = models.DateTimeField(auto_now_add=True)
     dropped_at = models.DateTimeField(null=True, blank=True)
@@ -14,14 +14,14 @@ class AbstractEntry4New(models.Model):
     def save(self, *args, **kwargs):
         if not self.dropped_at:
             self.dropped_at = None
-        super(AbstractEntry4New, self).save(*args, **kwargs)
+        super(_AbstractEntry, self).save(*args, **kwargs)
     
     class Meta:
         abstract = True
         ordering = ["created_at"]
 
 
-class AbstractEntry4Old(models.Model):    
+class _AbstractEntry4Old(models.Model):    
     id = models.AutoField(primary_key=True)
     created_at = models.DateTimeField(db_column='rcreated', auto_now_add=True)
     dropped_at = models.DateTimeField(db_column='rdropped', null=True, blank=True)
@@ -29,34 +29,34 @@ class AbstractEntry4Old(models.Model):
     def save(self, *args, **kwargs):
         if not self.dropped_at:
             self.dropped_at = None
-        super(AbstractEntry4Old, self).save(*args, **kwargs)
+        super(_AbstractEntry4Old, self).save(*args, **kwargs)
     
     class Meta:
         abstract = True
         ordering = ["created_at"]
 
 
-class Employee(AbstractEntry4Old):
+class Employee(_AbstractEntry4Old):
     guid = models.UUIDField(db_column='userid', default=uuid.uuid4, editable=False)
     surname = models.CharField(max_length=64)
     first_name = models.CharField(db_column='firstname', max_length=64)
     patronymic = models.CharField(max_length=64)
     
     def __str__(self):
-        return '%s %s %s' % (self.surname, self.first_name, self.patronymic)
+        return '%s %s %s %s' % (self.id, self.surname, self.first_name, self.patronymic)
     
     class Meta:
         db_table = 'users'
 
 
-class Organization(AbstractEntry4Old):
+class Organization(_AbstractEntry4Old):
     guid = models.UUIDField(db_column='companyid', default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=250)
     address = models.CharField(max_length=500, blank=True)
     phone = models.CharField(max_length=50, blank=True)
     
     def __str__(self):
-        return self.name
+        return '%s %s %s %s' % (self.id, self.name, self.address, self.phone)
     
     class Meta:
         db_table = 'company'
@@ -79,7 +79,7 @@ def create_organization(sender, instance, created, **kwargs):
         user.save()
 
 
-class Department(AbstractEntry4Old):
+class Department(_AbstractEntry4Old):
     organization = models.ForeignKey('Organization', db_column='companyid', related_name='departments', on_delete=models.CASCADE)
     name = models.CharField(max_length=64)
     rights = models.IntegerField(default=0)
@@ -87,13 +87,13 @@ class Department(AbstractEntry4Old):
     description = models.CharField(max_length=500, blank=True)
     
     def __str__(self):
-        return '%s, %s' % (self.organization, self.name)
+        return '%s %s %s %s %s %s' % (self.id, self.organization, self.name, self.rights, self.address, self.description)
     
     class Meta:
         db_table = 'usergroup'
 
 
-class Employee2Department(AbstractEntry4Old):
+class Employee2Department(_AbstractEntry4Old):
     department = models.ForeignKey('Department', db_column='usergroupid', related_name='employees', on_delete=models.CASCADE)
     employee = models.ForeignKey('Employee', db_column='usersid', related_name='departments', on_delete=models.CASCADE)
     
@@ -108,12 +108,12 @@ class Login(models.Model):
     SUPERUSER = 'su'
     ADMIN = 'adm'
     CONTROLLER = 'ctrl'
-    REGISTER = 'reg'
+    REGISTRATOR = 'reg'
     NOT_SELECTED = 'none'
     USER_TYPE = [
         (ADMIN, 'admin'),
         (CONTROLLER, 'controller'),
-        (REGISTER, 'register'),
+        (REGISTRATOR, 'register'),
         (SUPERUSER, 'superuser'),
         (NOT_SELECTED, 'not selected'),
     ]
@@ -133,7 +133,7 @@ class Login(models.Model):
         return super(self.__class__, self).delete(*args, **kwargs)
     
     def __str__(self):
-        return '%s, %s' % (self.user, self.get_type_display())
+        return '%s %s %s %s %s' % (self.id, self.organization, self.user.username, self.user.first_name + ' ' + self.user.last_name, self.get_type_display())
 
 
 @receiver(post_save, sender=User)
@@ -145,5 +145,4 @@ def create_user_profile(sender, instance, created, **kwargs):
 @receiver(post_save, sender=User)
 def save_user_profile(sender, instance, **kwargs):
     instance.login.save()
-
         
