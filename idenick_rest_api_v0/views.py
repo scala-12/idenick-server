@@ -249,7 +249,7 @@ class EmployeeViewSet(__AbstractViewSet):
         return Response({'message': 'Employee was deleted', 'data': self.serializer_classes.get('retrieve', None)(employee).data})
 
 
-class UserViewSet(__AbstractViewSet):
+class _UserViewSet(__AbstractViewSet):
     serializer_classes = {
         'list': LoginSerializer.ShortSerializer,
         'retrieve': LoginSerializer.ShortSerializer,
@@ -264,13 +264,13 @@ class UserViewSet(__AbstractViewSet):
     def __get_queryset(self, organization_id):
         return Login.objects.filter(organization__id=organization_id).filter(type=self._user_type())
 
-    def list(self, request, organization_id):
-        return self._list(self.__get_queryset(organization_id=organization_id))
+    def _list(self, request, organization_id):
+        return super._list(self.__get_queryset(organization_id=organization_id))
     
-    def retrieve(self, request, organization_id, pk=None):
-        return self._retrieve(self.__get_queryset(organization_id=organization_id), pk)
+    def _retrieve(self, request, organization_id, pk=None):
+        return super._retrieve(self.__get_queryset(organization_id=organization_id), pk)
     
-    def create(self, request, organization_id):
+    def _create(self, request, organization_id):
         serializer_class = self.get_serializer_class()
         serializer = serializer_class(data=request.data)
         result = None
@@ -291,15 +291,47 @@ class UserViewSet(__AbstractViewSet):
 
 
 # for admin
-class RegisterViewSet(UserViewSet):
+class RegisterViewSets:
+    class OrganizationViewSet(_UserViewSet):
 
-    def _user_type(self):
-        return Login.REGISTRATOR
+        def _user_type(self):
+            return Login.REGISTRATOR
+        
+        def list(self, request, organization_id):
+            return self._list(request, organization_id)
+        
+        def create(self, request, organization_id):
+            return self._create(request, organization_id)
+    
+
+    class SimpleViewSet(_UserViewSet):
+
+        def _user_type(self):
+            return Login.REGISTRATOR
+        
+        def retrieve(self, request, organization_id, pk=None):
+            return self._retrieve(request, organization_id, pk)
 
 
 # for register
-class ControllerViewSet(UserViewSet):
+class ControllerViewSets:
+    class OrganizationViewSet(_UserViewSet):
 
-    def _user_type(self):
-        return Login.CONTROLLER
+        def _user_type(self):
+            return Login.CONTROLLER
+        
+        def list(self, request, organization_id):
+            return self._list(request, organization_id)
+        
+        def create(self, request, organization_id):
+            return self._create(request, organization_id)
+    
+
+    class SimpleViewSet(_UserViewSet):
+
+        def _user_type(self):
+            return Login.CONTROLLER
+        
+        def retrieve(self, request, organization_id, pk=None):
+            return self._retrieve(request, organization_id, pk)
 
