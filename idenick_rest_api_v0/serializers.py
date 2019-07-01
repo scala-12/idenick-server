@@ -1,10 +1,11 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
-from idenick_app.models import Organization, Department, Employee, Login
+from idenick_app.models import Organization, Department, Employee, Login, \
+    Employee2Department
 
 
-class OrganizationSerializer():
+class OrganizationSerializers:
 
     class CreateSerializer(serializers.ModelSerializer):
 
@@ -16,9 +17,20 @@ class OrganizationSerializer():
                 'phone',
             ]
     
-    class FullSerializer(serializers.ModelSerializer):
-        departments = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    class ModelSerializer(serializers.ModelSerializer):
+        departments_count = serializers.SerializerMethodField()
+        controllers_count = serializers.SerializerMethodField()
+        registrators_count = serializers.SerializerMethodField()
         
+        def get_departments_count(self, obj):
+            return Department.objects.filter(organization=obj).count()
+        
+        def get_controllers_count(self, obj):
+            return Login.objects.filter(type=Login.CONTROLLER, organization=obj).count()
+        
+        def get_registrators_count(self, obj):
+            return Login.objects.filter(type=Login.REGISTRATOR, organization=obj).count()
+
         class Meta:
             model = Organization
             fields = [
@@ -28,22 +40,13 @@ class OrganizationSerializer():
                 'name',
                 'address',
                 'phone',
-                'departments',
-            ]
-    
-    class ShortSerializer(serializers.ModelSerializer):
-
-        class Meta:
-            model = Organization
-            fields = [
-                'id',
-                'name',
-                'address',
-                'phone',
+                'departments_count',
+                'controllers_count',
+                'registrators_count',
             ]
 
 
-class DepartmentSerializer():
+class DepartmentSerializers:
     
     class CreateSerializer(serializers.ModelSerializer):
 
@@ -68,13 +71,12 @@ class DepartmentSerializer():
                 'description',
             ]
     
-    class FullSerializer(serializers.ModelSerializer):
-        employees = serializers.SlugRelatedField(
-            many=True,
-            read_only=True,
-            slug_field='employee_id'
-        )
+    class ModelSerializer(serializers.ModelSerializer):
+        employees_count = serializers.SerializerMethodField()
         
+        def get_employees_count(self, obj):
+            return Employee2Department.objects.filter(department=obj).count()
+
         class Meta:
             model = Department
             fields = [
@@ -86,21 +88,8 @@ class DepartmentSerializer():
                 'rights',
                 'address',
                 'description',
-                'employees',
+                'employees_count',
              ]
-    
-    class ShortSerializer(serializers.ModelSerializer):
-
-        class Meta:
-            model = Department
-            fields = [
-                'id',
-                'organization',
-                'name',
-                'rights',
-                'address',
-                'description',
-            ]
         
         
 class OrganizationDepartmentIdsSerializer(serializers.ModelSerializer):
@@ -127,7 +116,7 @@ class EmployeeSerializer():
                 'patronymic',
             ]
     
-    class FullSerializer(serializers.ModelSerializer):
+    class ModelSerializer(serializers.ModelSerializer):
         departments = OrganizationDepartmentIdsSerializer(many=True, read_only=True)
         
         class Meta:
@@ -136,19 +125,6 @@ class EmployeeSerializer():
                 'id',
                 'created_at',
                 'dropped_at',
-                'surname',
-                'first_name',
-                'patronymic',
-                'departments',
-            ]
-    
-    class ShortSerializer(serializers.ModelSerializer):
-        departments = OrganizationDepartmentIdsSerializer(many=True, read_only=True)
-
-        class Meta:
-            model = Employee
-            fields = [
-                'id',
                 'surname',
                 'first_name',
                 'patronymic',
@@ -167,6 +143,7 @@ class LoginSerializer():
                 'first_name',
                 'last_name',
                 'password',
+                'email',
             ]
 
     class UpdateSerializer(serializers.ModelSerializer):
@@ -179,17 +156,19 @@ class LoginSerializer():
                 'password',
             ]
     
-    class ShortSerializer(serializers.ModelSerializer):
+    class FullSerializer(serializers.ModelSerializer):
         username = serializers.ReadOnlyField(source='user.username')
         first_name = serializers.ReadOnlyField(source='user.first_name')
         last_name = serializers.ReadOnlyField(source='user.last_name')
         is_active = serializers.ReadOnlyField(source='user.is_active')
         type = serializers.ReadOnlyField(source='get_type_display')
+        date_joined = serializers.ReadOnlyField(source='user.date_joined')
         
         class Meta:
             model = Login
             fields = [
                 'id',
+                'date_joined',
                 'organization',
                 'type',
                 'username',

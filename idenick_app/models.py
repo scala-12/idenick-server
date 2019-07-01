@@ -113,7 +113,7 @@ class Login(models.Model):
     USER_TYPE = [
         (ADMIN, 'admin'),
         (CONTROLLER, 'controller'),
-        (REGISTRATOR, 'register'),
+        (REGISTRATOR, 'registrator'),
         (SUPERUSER, 'superuser'),
         (NOT_SELECTED, 'not selected'),
     ]
