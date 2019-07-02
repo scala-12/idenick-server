@@ -118,9 +118,9 @@ class DepartmentViewSet(_AbstractViewSet):
     def _get_queryset(self, request):
         login = Login.objects.get(user=request.user)
         result = None
-        if login.type == Login.SUPERUSER:
+        if login.role == Login.SUPERUSER:
             result = Department.objects.all()
-        elif (login.type == Login.CONTROLLER) or (login.type == Login.REGISTRATOR):
+        elif (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
             result = Department.objects.filter(organization=login.organization)
         return result
 
@@ -213,10 +213,10 @@ class EmployeeSets:
     
             result = None
             department = request.query_params.get('department', None)
-            if login.type == Login.CONTROLLER:
+            if login.role == Login.CONTROLLER:
                 filtered_employees = Employee2Department.objects.filter(department__organization=login.organization)
                 result = map(lambda e2o : e2o.employee, filtered_employees if (department == None) else filtered_employees.filter(department=department))
-            elif login.type == Login.SUPERUSER:
+            elif login.role == Login.SUPERUSER:
                 organization = request.query_params.get('organization', None)
                 if not (organization is None):
                     result = map(lambda e2o : e2o.employee, Employee2Department.objects.filter(department__organization=organization))
@@ -295,7 +295,7 @@ class _UserViewSet(_AbstractViewSet):
     }
     
     @abstractmethod
-    def _user_type(self):
+    def _user_role(self):
         pass
     
     def _get_queryset(self, request, organization_id=None):
@@ -303,7 +303,7 @@ class _UserViewSet(_AbstractViewSet):
             login = Login.objects.get(user=request.user)
             organization_id = login.organization_id
 
-        return Login.objects.filter(organization__id=organization_id).filter(type=self._user_type())
+        return Login.objects.filter(organization__id=organization_id).filter(role=self._user_role())
 
     def _user_list(self, request, organization_id=None):
         result = self._list_data(request, self._get_queryset(request, organization_id=organization_id))
@@ -334,7 +334,7 @@ class _UserViewSet(_AbstractViewSet):
                 user.save()
                 login = Login.objects.get(user=user)
                 login.organization = Organization.objects.get(id=organization_id)
-                login.type = self._user_type()
+                login.role = self._user_role()
                 login.save()
                 result = self._response({'data': self._serializer_classes.get('retrieve', None)(login).data})
             else:
@@ -348,7 +348,7 @@ class RegistratorViews:
 
     class ByOrganizationViewSet(_UserViewSet):
 
-        def _user_type(self):
+        def _user_role(self):
             return Login.REGISTRATOR
         
         def list(self, request, organization_id):
@@ -359,7 +359,7 @@ class RegistratorViews:
 
     class SimpleViewSet(_UserViewSet):
 
-        def _user_type(self):
+        def _user_role(self):
             return Login.REGISTRATOR
         
         def list(self, request):
@@ -374,7 +374,7 @@ class ControllerViews:
 
     class ByOrganizationViewSet(_UserViewSet):
 
-        def _user_type(self):
+        def _user_role(self):
             return Login.CONTROLLER
         
         def list(self, request, organization_id):
@@ -385,7 +385,7 @@ class ControllerViews:
 
     class SimpleViewSet(_UserViewSet):
 
-        def _user_type(self):
+        def _user_role(self):
             return Login.CONTROLLER
         
         def list(self, request):

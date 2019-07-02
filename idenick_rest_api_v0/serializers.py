@@ -26,10 +26,10 @@ class OrganizationSerializers:
             return Department.objects.filter(organization=obj).count()
         
         def get_controllers_count(self, obj):
-            return Login.objects.filter(type=Login.CONTROLLER, organization=obj).count()
+            return Login.objects.filter(role=Login.CONTROLLER, organization=obj).count()
         
         def get_registrators_count(self, obj):
-            return Login.objects.filter(type=Login.REGISTRATOR, organization=obj).count()
+            return Login.objects.filter(role=Login.REGISTRATOR, organization=obj).count()
 
         class Meta:
             model = Organization
@@ -161,7 +161,7 @@ class LoginSerializer():
         first_name = serializers.ReadOnlyField(source='user.first_name')
         last_name = serializers.ReadOnlyField(source='user.last_name')
         is_active = serializers.ReadOnlyField(source='user.is_active')
-        type = serializers.ReadOnlyField(source='get_type_display')
+        role = serializers.ReadOnlyField(source='get_role_display')
         date_joined = serializers.ReadOnlyField(source='user.date_joined')
         
         class Meta:
@@ -170,7 +170,7 @@ class LoginSerializer():
                 'id',
                 'date_joined',
                 'organization',
-                'type',
+                'role',
                 'username',
                 'first_name',
                 'last_name',

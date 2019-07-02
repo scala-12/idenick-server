@@ -74,7 +74,7 @@ def create_organization(sender, instance, created, **kwargs):
             username=instance.guid,
             password=instance.guid,
         )
-        user.login.type = Login.ADMIN
+        user.login.role = Login.ADMIN
         user.login.organization = instance
         user.save()
 
@@ -110,7 +110,7 @@ class Login(models.Model):
     CONTROLLER = 'ctrl'
     REGISTRATOR = 'reg'
     NOT_SELECTED = 'none'
-    USER_TYPE = [
+    USER_ROLE = [
         (ADMIN, 'admin'),
         (CONTROLLER, 'controller'),
         (REGISTRATOR, 'registrator'),
@@ -120,12 +120,12 @@ class Login(models.Model):
     
     id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    type = models.CharField(max_length=4, choices=USER_TYPE, blank=True)
+    role = models.CharField(max_length=4, choices=USER_ROLE, blank=True)
     organization = models.ForeignKey('Organization', on_delete=models.CASCADE, null=True, blank=True)
     
     def save(self, *args, **kwargs):
-        if not self.organization and not self.type:
-            self.type = Login.NOT_SELECTED
+        if not self.organization and not self.role:
+            self.role = Login.NOT_SELECTED
         super(Login, self).save(*args, **kwargs)
     
     def delete(self, *args, **kwargs):
@@ -133,7 +133,7 @@ class Login(models.Model):
         return super(self.__class__, self).delete(*args, **kwargs)
     
     def __str__(self):
-        return '%s %s %s %s %s' % (self.id, self.organization, self.user.username, self.user.first_name + ' ' + self.user.last_name, self.get_type_display())
+        return '%s %s %s %s %s' % (self.id, self.organization, self.user.username, self.user.first_name + ' ' + self.user.last_name, self.get_role_display())
 
 
 @receiver(post_save, sender=User)

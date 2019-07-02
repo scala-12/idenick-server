@@ -14,7 +14,7 @@ class DepartmentAdmin(admin.ModelAdmin):
     
 @admin.register(Login)
 class LoginAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user', 'type', 'organization']
+    list_display = ['id', 'user', 'role', 'organization']
     
     
 @admin.register(Employee)
