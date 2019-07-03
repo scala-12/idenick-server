@@ -14,5 +14,6 @@
 1. Установить дополнительные приложения для взаимодействия с react: *rest framework* и *djoser*
    ```
    pip install djangorestframework
+   pip install django-cors-headers
    pip install -U djoser
    ```
