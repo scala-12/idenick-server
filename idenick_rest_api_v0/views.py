@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from idenick_app.models import Organization, Department, Employee, Employee2Department, \
     Login
 from idenick_rest_api_v0.serializers import OrganizationSerializers, DepartmentSerializers, EmployeeSerializer, LoginSerializer
+from rest_framework.decorators import api_view
 
 
 # from rest_framework.permissions import IsAuthen
@@ -394,3 +395,14 @@ class ControllerViews:
         def retrieve(self, request, organization_id, pk=None):
             return self._retrieve(request, organization_id, pk)
 
+@api_view(['GET'])
+def get_current_user(request):
+    user = request.user
+    
+    response = None
+    if (user.is_authenticated):
+        response = LoginSerializer.FullSerializer(Login.objects.get(user=user)).data
+    else:
+        response = None
+    
+    return Response({'data': response})
