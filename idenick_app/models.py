@@ -74,7 +74,7 @@ def create_organization(sender, instance, created, **kwargs):
             username=instance.guid,
             password=instance.guid,
         )
-        user.login.role = Login.ADMIN
+        user.login.role = Login.REGISTRATOR
         user.login.organization = instance
         user.save()
 
@@ -126,6 +126,10 @@ class Login(models.Model):
     def save(self, *args, **kwargs):
         if not self.organization and not self.role:
             self.role = Login.NOT_SELECTED
+
+        if (self.role != Login.CONTROLLER) and (self.role != Login.REGISTRATOR):
+            self.organization = None
+
         super(Login, self).save(*args, **kwargs)
     
     def delete(self, *args, **kwargs):
