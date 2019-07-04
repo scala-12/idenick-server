@@ -30,11 +30,12 @@ class _AbstractViewSet(viewsets.ViewSet):
         serializer = self.get_serializer_class()(_queryset, many=True) 
         return {'data': serializer.data}
     
-    def _retrieve(self, request, pk=None):
-        return self._response(self._retrieve_data(request, pk))
+    def _retrieve(self, request, pk=None, queryset=None):
+        return self._response(self._retrieve_data(request, pk, queryset))
     
-    def _retrieve_data(self, request, pk=None):
-        entity = get_object_or_404(self._get_queryset(request), pk=pk)
+    def _retrieve_data(self, request, pk=None, queryset=None):
+        _queryset = self._get_queryset(request) if (queryset == None) else queryset
+        entity = get_object_or_404(_queryset, pk=pk)
         serializer = self.get_serializer_class()(entity)
         return {'data': serializer.data}
 
@@ -201,7 +202,7 @@ class DepartmentViewSet(_AbstractViewSet):
 # for controller
 class EmployeeSets:
 
-    class __AbstractEmployeeViewSet(_AbstractViewSet):
+    class _AbstractEmployeeViewSet(_AbstractViewSet):
         _serializer_classes = {
             'list': EmployeeSerializer.ModelSerializer,
             'retrieve': EmployeeSerializer.ModelSerializer,
@@ -214,27 +215,54 @@ class EmployeeSets:
     
             result = None
             department = request.query_params.get('department', None)
+            employees_ids = None
             if login.role == Login.CONTROLLER:
                 filtered_employees = Employee2Department.objects.filter(department__organization=login.organization)
-                result = map(lambda e2o : e2o.employee, filtered_employees if (department == None) else filtered_employees.filter(department=department))
+                employees_ids = map(lambda e2o : e2o.employee_id, filtered_employees if (department == None) else filtered_employees.filter(department=department))
             elif login.role == Login.SUPERUSER:
                 organization = request.query_params.get('organization', None)
                 if not (organization is None):
-                    result = map(lambda e2o : e2o.employee, Employee2Department.objects.filter(department__organization=organization))
+                    employees_ids = map(lambda e2o : e2o.employee, Employee2Department.objects.filter(department__organization=organization))
                 elif not (department is None):
-                    result = map(lambda e2d : e2d.employee, Employee2Department.objects.all().filter(department=department))
+                    employees_ids = map(lambda e2d : e2d.employee, Employee2Department.objects.all().filter(department=department))
                 else:
                     result = Employee.objects.all()
-
+            
+            if result == None:
+                result = Employee.objects.filter(id__in=employees_ids)
+            
+            return result
+        
+        def _withOrganization(self, request):
+            result = {}
+            if (request.GET.__contains__('showorganization')):
+                login = Login.objects.get(user=request.user)
+                department = request.query_params.get('department', None)
+                
+                organization_id = login.organization_id if (department == None) else department.organization_id
+                organizations_queryset = Organization.objects.filter(id=organization_id)
+                organizations = map(lambda i: OrganizationSerializers.ModelSerializer(i).data, organizations_queryset)
+                organizations_by_id = {}
+                for o in organizations:
+                    organizations_by_id.update({o.get('id'): o})
+                
+                result = {'organizations': organizations_by_id}
+            
             return result
     
-    class SimpleViewSet(__AbstractEmployeeViewSet):
+    class SimpleViewSet(_AbstractEmployeeViewSet):
 
         def list(self, request):
-            return self._list(self._get_queryset(request))
+            result = self._list_data(request, self._get_queryset(request))
+            result.update(self._withOrganization(request))
+            
+            return self._response(result)
         
         def retrieve(self, request, pk=None):
-            return self._retrieve(self._get_queryset(request), pk)
+            result = self._retrieve_data(request, pk, self._get_queryset(request))
+            result.update(self._withOrganization(request))
+            
+            return self._response(result)
         
         def create(self, request):
             serializer_class = self.get_serializer_class()
