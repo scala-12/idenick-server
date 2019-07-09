@@ -1,16 +1,15 @@
-
-
 from abc import abstractmethod
 
 from django.contrib.auth.models import User
+from django.db.models.query_utils import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from idenick_app.models import Organization, Department, Employee, Employee2Department, \
     Login
 from idenick_rest_api_v0.serializers import OrganizationSerializers, DepartmentSerializers, EmployeeSerializer, LoginSerializer
-from rest_framework.decorators import api_view
 
 
 # from rest_framework.permissions import IsAuthen
@@ -18,6 +17,14 @@ class _AbstractViewSet(viewsets.ViewSet):
     
     def _response(self, data, status=status.HTTP_200_OK):
         return Response(data, headers={'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'}, status=status)
+    
+    def _response4update_n_create(self, code=status.HTTP_200_OK, data=None, message=None):
+        result = None
+        if (data == None):
+            result = Response({'message': message, 'success': False}, headers={'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'}, status=(status.HTTP_400_BAD_REQUEST if (code == status.HTTP_200_OK) else code))
+        else:
+            result = Response({'data': self._serializer_classes.get('retrieve')(data).data, 'success': True}, headers={'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'}, status=code)
+        return result
 
     def get_serializer_class(self):
         return self._serializer_classes[self.action]
@@ -66,36 +73,35 @@ class OrganizationViewSet(_AbstractViewSet):
             organization = Organization(**serializer.data)
             if organization.name:
                 if Organization.objects.filter(name=organization.name).exists():
-                    result = self._response({'message': 'Name is not unique'}, status=status.HTTP_400_BAD_REQUEST)
+                    result = self._response4update_n_create(message='Name is not unique')
                 else:
                     organization.save()
-                    result = self._response({'data': self._serializer_classes.get('retrieve', None)(organization).data})
+                    result = self._response4update_n_create(data=organization, code=status.HTTP_201_CREATED)
             else:
-                result = self._response({'message': 'Name is empty'}, status=status.HTTP_400_BAD_REQUEST)
+                result = self._response4update_n_create(message='Name is empty')
             
         return result
     
     def partial_update(self, request, pk=None):
-        queryset = Organization.objects.all()
-        organization = get_object_or_404(queryset, pk=pk)
+        organization = get_object_or_404(Organization.objects.all(), pk=pk)
         
         serializer_class = self.get_serializer_class()
         serializer = serializer_class(data=request.data)
-        update = Organization(**serializer.data)
         result = None
         if serializer.is_valid():
+            update = Organization(**serializer.data)
             if update.name:
-                exists = Organization.objects.filter(name=update.name)
-                if not exists.exists() or exists.first().id != organization.id:
+                exists = Organization.objects.filter(name=update.name).filter(~Q(id=organization.id))
+                if not exists.exists():
                     organization.name = update.name
                     organization.address = update.address
                     organization.phone = update.phone
                     organization.save()
-                    result = self._response({'data': self._serializer_classes.get('retrieve', None)(organization).data})
+                    result = self._response4update_n_create(data=organization)
                 else:
-                    result = self._response({'message': 'Name is not unique'}, status=status.HTTP_400_BAD_REQUEST)
+                    result = self._response4update_n_create(message='Name is not unique')
             else:
-                result = self._response({'message': 'Name is empty'}, status=status.HTTP_400_BAD_REQUEST)
+                result = self._response4update_n_create(message='Name is empty')
         
         return result
     
@@ -103,7 +109,7 @@ class OrganizationViewSet(_AbstractViewSet):
         queryset = Organization.objects.all()
         organization = get_object_or_404(queryset, pk=pk)
         organization.delete()
-        return self._response({'message': 'Organization was deleted', 'data': self._serializer_classes.get('retrieve', None)(organization).data})
+        return self._response({'message': 'Organization was deleted', 'data': self._serializer_classes.get('retrieve')(organization).data})
 
 
 # for controller
@@ -120,9 +126,10 @@ class DepartmentViewSet(_AbstractViewSet):
     def _get_queryset(self, request):
         login = Login.objects.get(user=request.user)
         result = None
-        if login.role == Login.SUPERUSER:
+        role = login.role
+        if (role == Login.SUPERUSER) or (role == Login.ADMIN):
             result = Department.objects.all()
-        elif (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
+        elif (role == Login.CONTROLLER) or (role == Login.REGISTRATOR):
             result = Department.objects.filter(organization=login.organization)
         return result
 
@@ -155,40 +162,39 @@ class DepartmentViewSet(_AbstractViewSet):
         result = None
         
         if serializer.is_valid():
-            department = Department(**serializer.data)
-            if department.name and department.rights:
+            department = Department(**serializer.data, organization=Login.objects.get(user=request.user).organization)
+            if department.name:
                 if Department.objects.filter(name=department.name).exists():
-                    result = self._response({'message': 'Name is not unique'}, status=status.HTTP_400_BAD_REQUEST)
+                    result = self._response4update_n_create(message='Name is not unique')
                 else:
                     department.save()
-                    result = self._response({'data': self._serializer_classes.get('retrieve', None)(department).data})
+                    result = self._response4update_n_create(data=department, code=status.HTTP_201_CREATED)
             else:
-                result = self._response({'message': ('Name' if not department.name else 'Rights') + ' is empty'}, status=status.HTTP_400_BAD_REQUEST)
+                result = self._response4update_n_create(message='Name is empty')
             
         return result
     
     def partial_update(self, request, pk=None):
-        queryset = Department.objects.all()
-        department = get_object_or_404(queryset, pk=pk)
+        department = get_object_or_404(self._get_queryset(request), pk=pk)
         
         serializer_class = self.get_serializer_class()
         serializer = serializer_class(data=request.data)
-        update = Department(**serializer.data)
         result = None
         if serializer.is_valid():
+            update = Department(**serializer.data)
             if update.name:
-                exists = Department.objects.filter(name=update.name)
-                if not exists.exists() or exists.first().id != department.id:
+                exists = Department.objects.filter(organization__id=department.organization_id).filter(name=update.name).filter(~Q(id=department.id))
+                if not exists.exists():
                     department.name = update.name
                     department.rights = update.rights
                     department.address = update.address
                     department.description = update.description
                     department.save()
-                    result = self._response({'data': self._serializer_classes.get('retrieve', None)(department).data})
+                    result = self._response4update_n_create(data=department)
                 else:
-                    result = self._response({'message': 'Name is not unique'}, status=status.HTTP_400_BAD_REQUEST)
+                    result = self._response4update_n_create(message='Name is not unique')
             else:
-                result = self._response({'message': 'Name is empty'}, status=status.HTTP_400_BAD_REQUEST)
+                result = self._response4update_n_create(message='Name is empty')
         
         return result
     
@@ -196,7 +202,7 @@ class DepartmentViewSet(_AbstractViewSet):
         queryset = Department.objects.all()
         department = get_object_or_404(queryset, pk=pk)
         department.delete()
-        return self._response({'message': 'Department was deleted', 'data': self._serializer_classes.get('retrieve', None)(department).data})
+        return self._response({'message': 'Department was deleted', 'data': self._serializer_classes.get('retrieve')(department).data})
 
 
 # for controller
@@ -279,7 +285,7 @@ class EmployeeSets:
                         for department_id in departments:
                             if Department.objects.filter(id=department_id).exists():
                                 Employee2Department.objects.create(employee=employee, department=Department.objects.get(id=department_id))
-                    result = self._response({'data': self._serializer_classes.get('retrieve', None)(employee).data})
+                    result = self._response({'data': self._serializer_classes.get('retrieve')(employee).data})
                 else:
                     result = self._response({'message': 'Name is empty'}, status=status.HTTP_400_BAD_REQUEST)
                 
@@ -304,7 +310,7 @@ class EmployeeSets:
                     for department_id in departments:
                         if Department.objects.filter(id=department_id).exists():
                             Employee2Department.objects.create(employee=employee, department=Department.objects.get(id=department_id))
-                result = self._response({'data': self._serializer_classes.get('retrieve', None)(employee).data})
+                result = self._response({'data': self._serializer_classes.get('retrieve')(employee).data})
             
             return result
         
@@ -312,7 +318,7 @@ class EmployeeSets:
             queryset = Employee.objects.all()
             employee = get_object_or_404(queryset, pk=pk)
             employee.delete()
-            return self._response({'message': 'Employee was deleted', 'data': self._serializer_classes.get('retrieve', None)(employee).data})
+            return self._response({'message': 'Employee was deleted', 'data': self._serializer_classes.get('retrieve')(employee).data})
 
 
 class _UserViewSet(_AbstractViewSet):
@@ -328,13 +334,17 @@ class _UserViewSet(_AbstractViewSet):
         pass
     
     def _get_queryset(self, request, organization_id=None):
+        result = Login.objects.filter(role=self._user_role())
         if (organization_id == None):
             login = Login.objects.get(user=request.user)
-            organization_id = login.organization_id
+            if (login.role == Login.REGISTRATOR):
+                result = result.filter(organization__id=login.organization_id)
+        else:
+            result = result.filter(organization__id=organization_id)
 
-        return Login.objects.filter(organization__id=organization_id).filter(role=self._user_role())
+        return result
 
-    def _user_list(self, request, organization_id=None):
+    def list(self, request, organization_id=None):
         result = self._list_data(request, self._get_queryset(request, organization_id=organization_id))
         
         if (request.GET.__contains__('showorganization')):
@@ -349,8 +359,12 @@ class _UserViewSet(_AbstractViewSet):
         
         return self._response(result)
     
-    def _retrieve(self, request, organization_id, pk=None):
-        return super._retrieve(self._get_queryset(request, organization_id=organization_id), pk)
+    def _retrieve_user(self, request, organization_id=None, pk=None):
+        result = self._retrieve_data(request=request, pk=pk, queryset=self._get_queryset(request, organization_id=organization_id))
+        if (request.GET.__contains__('showorganization')):
+            result.update({'organization': OrganizationSerializers.ModelSerializer(Organization.objects.get(id=result.get('data').get('organization'))).data})
+            
+        return self._response(result)
     
     def _create(self, request, organization_id):
         serializer_class = self.get_serializer_class()
@@ -358,17 +372,40 @@ class _UserViewSet(_AbstractViewSet):
         result = None
         
         if serializer.is_valid():
-            user = User(**serializer.data)
-            if user.username and user.password:
+            user_data = User(**serializer.data)
+            if user_data.username and user_data.password:
+                user = User.objects.create_user(username=user_data.username, password=user_data.password)
+                if (user_data.last_name):
+                    user.last_name = user_data.last_name
+                if (user_data.first_name):
+                    user.first_name = user_data.first_name
                 user.save()
+                
                 login = Login.objects.get(user=user)
                 login.organization = Organization.objects.get(id=organization_id)
                 login.role = self._user_role()
                 login.save()
-                result = self._response({'data': self._serializer_classes.get('retrieve', None)(login).data})
+                result = self._response4update_n_create(data=login, code=status.HTTP_201_CREATED)
             else:
-                result = self._response({'message': 'Name is empty'}, status=status.HTTP_400_BAD_REQUEST)
+                result = self._response4update_n_create(message='Name is empty')
             
+        return result
+    
+    def _partial_update(self, request, pk=None):
+        login = get_object_or_404(Login.objects.all(), pk=pk)
+        user = login.user
+        
+        serializer_class = self.get_serializer_class()
+        serializer = serializer_class(request.data)
+        update = serializer.data
+        if update.get('first_name', '') != '':
+            user.first_name = update.get('first_name')
+        if update.get('last_name', '') != '':
+            user.last_name = update.get('last_name')
+        
+        user.save()
+        result = self._response4update_n_create(data=login)
+        
         return result
 
 
@@ -380,9 +417,6 @@ class RegistratorViews:
         def _user_role(self):
             return Login.REGISTRATOR
         
-        def list(self, request, organization_id):
-            return self._user_list(request, organization_id)
-        
         def create(self, request, organization_id):
             return self._create(request, organization_id)
 
@@ -391,11 +425,11 @@ class RegistratorViews:
         def _user_role(self):
             return Login.REGISTRATOR
         
-        def list(self, request):
-            return self._user_list(request)
+        def retrieve(self, request, pk=None):
+            return self._retrieve_user(request, organization_id=None, pk=pk)
         
-        def retrieve(self, request, organization_id, pk=None):
-            return self._retrieve(request, organization_id, pk)
+        def partial_update(self, request, pk=None):
+            return self._partial_update(request, pk)
 
 
 # for registrator
@@ -405,23 +439,21 @@ class ControllerViews:
 
         def _user_role(self):
             return Login.CONTROLLER
-        
-        def list(self, request, organization_id):
-            return self._user_list(request, organization_id)
-        
-        def create(self, request, organization_id):
-            return self._create(request, organization_id)
 
     class SimpleViewSet(_UserViewSet):
 
         def _user_role(self):
             return Login.CONTROLLER
         
-        def list(self, request):
-            return self._user_list(request)
+        def create(self, request):
+            return self._create(request, )
         
-        def retrieve(self, request, organization_id, pk=None):
-            return self._retrieve(request, organization_id, pk)
+        def retrieve(self, request, pk=None):
+            return self._retrieve_user(request, Login.objects.get(user=request.user).organization_id, pk)
+        
+        def partial_update(self, request, pk=None):
+            return self._partial_update(request, pk)
+
 
 @api_view(['GET'])
 def get_current_user(request):

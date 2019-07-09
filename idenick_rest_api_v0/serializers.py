@@ -57,7 +57,6 @@ class DepartmentSerializers:
                 'rights',
                 'address',
                 'description',
-                'organization_id',
             ]
 
     class UpdateSerializer(serializers.ModelSerializer):
@@ -153,7 +152,6 @@ class LoginSerializer():
             fields = [
                 'first_name',
                 'last_name',
-                'password',
             ]
     
     class FullSerializer(serializers.ModelSerializer):
