@@ -9,7 +9,7 @@ from rest_framework.response import Response
 
 from idenick_app.models import Organization, Department, Employee, Employee2Department, \
     Login
-from idenick_rest_api_v0.serializers import OrganizationSerializers, DepartmentSerializers, EmployeeSerializer, LoginSerializer
+from idenick_rest_api_v0.serializers import OrganizationSerializers, DepartmentSerializers, EmployeeSerializer, LoginSerializer, UserSerializer
 
 
 # from rest_framework.permissions import IsAuthen
@@ -28,9 +28,6 @@ class _AbstractViewSet(viewsets.ViewSet):
 
     def get_serializer_class(self):
         return self._serializer_classes[self.action]
-    
-    def _list(self, request, queryset=None):
-        return self._response(self._list_data(request, queryset))
     
     def _list_data(self, request, queryset=None):
         _queryset = self._get_queryset(request) if (queryset == None) else queryset
@@ -60,7 +57,14 @@ class OrganizationViewSet(_AbstractViewSet):
         return Organization.objects.all()
 
     def list(self, request):
-        return self._list(request)
+        queryset = self._get_queryset(request)
+        name_filter = request.GET.get('name', None)
+        if (name_filter != None) and (name_filter != ''):
+            queryset = queryset.filter(name__icontains=name_filter)
+        
+        result = self._list_data(request, queryset)
+        
+        return self._response(result)
     
     def retrieve(self, request, pk=None):
         return self._retrieve(request, pk)
@@ -134,7 +138,12 @@ class DepartmentViewSet(_AbstractViewSet):
         return result
 
     def list(self, request):
-        result = self._list_data(request)
+        queryset = self._get_queryset(request)
+        name_filter = request.GET.get('name', None)
+        if (name_filter != None) and (name_filter != ''):
+            queryset = queryset.filter(name__icontains=name_filter)
+        
+        result = self._list_data(request, queryset)
         
         if (request.GET.__contains__('showorganization')):
             organizations_ids = set(map(lambda d: d.get('organization'), result.get('data')))
@@ -343,9 +352,20 @@ class _UserViewSet(_AbstractViewSet):
             result = result.filter(organization__id=organization_id)
 
         return result
+    
+    def asdf(self, i):
+        return UserSerializer(i).data
 
     def list(self, request, organization_id=None):
-        result = self._list_data(request, self._get_queryset(request, organization_id=organization_id))
+        queryset = self._get_queryset(request, organization_id=organization_id)
+        name_filter = request.GET.get('name', None)
+        users_ids = None
+        if (name_filter != None) and (name_filter != ''):
+            users_ids = set(map(lambda i: UserSerializer(i).data.get('id'), User.objects.filter(Q(last_name__icontains=name_filter) | Q(first_name__icontains=name_filter))))
+            queryset = queryset.filter(user_id__in=users_ids)
+        
+        
+        result = self._list_data(request, queryset)
         
         if (request.GET.__contains__('showorganization')):
             organizations_ids = set(map(lambda d: d.get('organization'), result.get('data')))

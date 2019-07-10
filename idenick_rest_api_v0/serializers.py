@@ -5,6 +5,15 @@ from idenick_app.models import Organization, Department, Employee, Login, \
     Employee2Department
 
 
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'last_name',
+            'first_name',
+        ]
+
 class OrganizationSerializers:
 
     class CreateSerializer(serializers.ModelSerializer):
