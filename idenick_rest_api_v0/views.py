@@ -10,11 +10,16 @@ from rest_framework.response import Response
 from idenick_app.models import Organization, Department, Employee, Employee2Department, \
     Login
 from idenick_rest_api_v0.serializers import OrganizationSerializers, DepartmentSerializers, EmployeeSerializer, LoginSerializer, UserSerializer
+from enum import Enum
+
+
+class ErrorMessage(Enum):
+    UNIQUE_DEPARTMENT_NAME = 'Подразделение с таким названием уже существует'
 
 
 # from rest_framework.permissions import IsAuthen
 class _AbstractViewSet(viewsets.ViewSet):
-    
+        
     def _response(self, data, status=status.HTTP_200_OK):
         return Response(data, headers={'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'}, status=status)
     
@@ -42,6 +47,24 @@ class _AbstractViewSet(viewsets.ViewSet):
         entity = get_object_or_404(_queryset, pk=pk)
         serializer = self.get_serializer_class()(entity)
         return {'data': serializer.data}
+    
+    def _get_validation_error_msg(self, errors, object_class, update_verbose=True):
+        msg_arr = []
+        for field in errors.keys():
+            sub_err = []
+            for err in errors.get(field):
+                sub_msg = err.capitalize()
+                verbose_name = object_class._meta.get_field(field).verbose_name
+                if (update_verbose):
+                    verbose_end = ''
+                    if (verbose_name.endswith('е')):
+                        verbose_end = 'м'
+                        
+                    sub_msg = sub_msg.replace(verbose_name, verbose_name + verbose_end)
+                sub_err.append(sub_msg)
+            msg_arr.append(verbose_name.capitalize() + ': ' + ', '.join(sub_err))
+        
+        return '\n'.join(msg_arr).replace('.,', ',')
 
 
 # for admin
@@ -75,14 +98,10 @@ class OrganizationViewSet(_AbstractViewSet):
         result = None
         if serializer.is_valid():
             organization = Organization(**serializer.data)
-            if organization.name:
-                if Organization.objects.filter(name=organization.name).exists():
-                    result = self._response4update_n_create(message='Name is not unique')
-                else:
-                    organization.save()
-                    result = self._response4update_n_create(data=organization, code=status.HTTP_201_CREATED)
-            else:
-                result = self._response4update_n_create(message='Name is empty')
+            organization.save()
+            result = self._response4update_n_create(data=organization, code=status.HTTP_201_CREATED)
+        else:   
+            result = self._response4update_n_create(message=self._get_validation_error_msg(serializer.errors, Organization))
             
         return result
     
@@ -90,24 +109,35 @@ class OrganizationViewSet(_AbstractViewSet):
         organization = get_object_or_404(Organization.objects.all(), pk=pk)
         
         serializer_class = self.get_serializer_class()
-        serializer = serializer_class(data=request.data)
         result = None
-        if serializer.is_valid():
-            update = Organization(**serializer.data)
-            if update.name:
-                exists = Organization.objects.filter(name=update.name).filter(~Q(id=organization.id))
-                if not exists.exists():
-                    organization.name = update.name
-                    organization.address = update.address
-                    organization.phone = update.phone
-                    organization.save()
-                    result = self._response4update_n_create(data=organization)
-                else:
-                    result = self._response4update_n_create(message='Name is not unique')
-            else:
-                result = self._response4update_n_create(message='Name is empty')
+        
+        valid_result = self._validate_on_update(pk, serializer_class, request.data)
+        
+        serializer = valid_result.get('serializer')
+        
+        update = valid_result.get('update')
+        if update != None:
+            organization.name = update.name
+            organization.address = update.address
+            organization.phone = update.phone
+            organization.save()
+            result = self._response4update_n_create(data=organization)
+        else:
+            result = self._response4update_n_create(message=self._get_validation_error_msg(serializer.errors, Organization))
         
         return result
+    
+    def _validate_on_update(self, pk, serializer_class, data):
+        update = None
+        serializer = serializer_class(data=data)
+        if (serializer.is_valid()):
+            update = Organization(**serializer.data)
+        elif (len(serializer.errors.keys()) == 1) and serializer.errors.keys().__contains__('name') and (serializer.errors.get('name')[0].code == 'unique') and not Organization.objects.filter(name=data.get('name')).filter(~Q(id=pk)).exists():
+            serializer = serializer_class(data)
+            update = Organization(**serializer.data)
+        
+        return {'update':update, 'serializer':serializer}
+        
     
     def delete(self, request, pk):
         queryset = Organization.objects.all()
@@ -172,14 +202,13 @@ class DepartmentViewSet(_AbstractViewSet):
         
         if serializer.is_valid():
             department = Department(**serializer.data, organization=Login.objects.get(user=request.user).organization)
-            if department.name:
-                if Department.objects.filter(name=department.name).exists():
-                    result = self._response4update_n_create(message='Name is not unique')
-                else:
-                    department.save()
-                    result = self._response4update_n_create(data=department, code=status.HTTP_201_CREATED)
+            if Department.objects.filter(name=department.name).exists():
+                result = self._response4update_n_create(message=ErrorMessage.UNIQUE_DEPARTMENT_NAME)
             else:
-                result = self._response4update_n_create(message='Name is empty')
+                department.save()
+                result = self._response4update_n_create(data=department, code=status.HTTP_201_CREATED)
+        else:   
+            result = self._response4update_n_create(message=self._get_validation_error_msg(serializer.errors, Department))
             
         return result
     
@@ -286,17 +315,16 @@ class EmployeeSets:
             
             if serializer.is_valid():
                 employee = Employee(**serializer.data)
-                if employee.first_name and employee.surname and employee.patronymic:
-                    employee.save()
+                employee.save()
                     
-                    departments = request.data.getlist('departments', None)
-                    if not departments is None:
-                        for department_id in departments:
-                            if Department.objects.filter(id=department_id).exists():
-                                Employee2Department.objects.create(employee=employee, department=Department.objects.get(id=department_id))
-                    result = self._response({'data': self._serializer_classes.get('retrieve')(employee).data})
-                else:
-                    result = self._response({'message': 'Name is empty'}, status=status.HTTP_400_BAD_REQUEST)
+                departments = request.data.getlist('departments', None)
+                if not departments is None:
+                    for department_id in departments:
+                        if Department.objects.filter(id=department_id).exists():
+                            Employee2Department.objects.create(employee=employee, department=Department.objects.get(id=department_id))
+                result = self._response({'data': self._serializer_classes.get('retrieve')(employee).data})
+            else:   
+                result = self._response4update_n_create(message=self._get_validation_error_msg(serializer.errors, Employee))
                 
             return result
         
@@ -352,9 +380,6 @@ class _UserViewSet(_AbstractViewSet):
             result = result.filter(organization__id=organization_id)
 
         return result
-    
-    def asdf(self, i):
-        return UserSerializer(i).data
 
     def list(self, request, organization_id=None):
         queryset = self._get_queryset(request, organization_id=organization_id)
@@ -363,7 +388,6 @@ class _UserViewSet(_AbstractViewSet):
         if (name_filter != None) and (name_filter != ''):
             users_ids = set(map(lambda i: UserSerializer(i).data.get('id'), User.objects.filter(Q(last_name__icontains=name_filter) | Q(first_name__icontains=name_filter))))
             queryset = queryset.filter(user_id__in=users_ids)
-        
         
         result = self._list_data(request, queryset)
         
@@ -408,6 +432,8 @@ class _UserViewSet(_AbstractViewSet):
                 result = self._response4update_n_create(data=login, code=status.HTTP_201_CREATED)
             else:
                 result = self._response4update_n_create(message='Name is empty')
+        else:   
+            result = self._response4update_n_create(message=self._get_validation_error_msg(serializer.errors, User, False))
             
         return result
     
@@ -466,7 +492,7 @@ class ControllerViews:
             return Login.CONTROLLER
         
         def create(self, request):
-            return self._create(request, )
+            return self._create(request, Login.objects.get(user=request.user).organization_id)
         
         def retrieve(self, request, pk=None):
             return self._retrieve_user(request, Login.objects.get(user=request.user).organization_id, pk)
