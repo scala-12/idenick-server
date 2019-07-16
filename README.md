@@ -1,6 +1,6 @@
 # idenick-server
 1. Установить *python* с официального сайта
-1. Установить *django* `pip install Django~=2.2.2`
+1. Установить *django* `pip install Django`
 1. Установка библиотек и пакетов, необходимых для работы с *MySQL* `pip install mysql-connector-python`
 1. Создание базы через *mysql* и настройка доступов к ней (*/idenick_project/settings.py*)
    ```
