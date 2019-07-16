@@ -72,13 +72,6 @@ def create_organization(sender, instance, created, **kwargs):
             name='default',
             address=instance.address,
         )
-        user = User.objects.create_user(
-            username=instance.guid,
-            password=instance.guid,
-        )
-        user.login.role = Login.REGISTRATOR
-        user.login.organization = instance
-        user.save()
 
 
 class Department(_AbstractEntry4Old):
