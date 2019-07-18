@@ -69,12 +69,14 @@ def create_organization(sender, instance, created, **kwargs):
     if created:
         Department.objects.create(
             organization=instance,
-            name='default',
+            name=Department.DEFAULT_NAME,
             address=instance.address,
         )
 
 
 class Department(_AbstractEntry4Old):
+    DEFAULT_NAME = 'Подразделение 1'
+    
     organization = models.ForeignKey('Organization', db_column='companyid', related_name='departments', on_delete=models.CASCADE)
     name = models.CharField(max_length=64)
     rights = models.IntegerField(default=0)
