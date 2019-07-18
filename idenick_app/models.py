@@ -37,13 +37,14 @@ class _AbstractEntry4Old(models.Model):
 
 
 class Employee(_AbstractEntry4Old):
+    organization = models.ForeignKey('Organization', related_name='employees', null=True, default=None, on_delete=models.SET_NULL)
     guid = models.UUIDField(db_column='userid', default=uuid.uuid4, editable=False)
-    surname = models.CharField(max_length=64)
+    last_name = models.CharField(db_column='surname', max_length=64)
     first_name = models.CharField(db_column='firstname', max_length=64)
     patronymic = models.CharField(max_length=64)
     
     def __str__(self):
-        return '%s %s %s %s' % (self.id, self.surname, self.first_name, self.patronymic)
+        return '%s %s %s %s' % (self.id, self.last_name, self.first_name, self.patronymic)
     
     class Meta:
         db_table = 'users'

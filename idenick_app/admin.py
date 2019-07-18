@@ -1,4 +1,5 @@
 from django.contrib import admin
+
 from idenick_app.models import Organization, Department, Login, Employee, Employee2Department
 
 
@@ -19,7 +20,7 @@ class LoginAdmin(admin.ModelAdmin):
     
 @admin.register(Employee)
 class EmployeeAdmin(admin.ModelAdmin):
-    list_display = ['id', 'surname', 'first_name', 'patronymic']
+    list_display = ['id', 'last_name', 'first_name', 'patronymic']
     
     
 @admin.register(Employee2Department)

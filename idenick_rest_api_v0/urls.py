@@ -4,12 +4,12 @@ from rest_framework.routers import DefaultRouter
 from idenick_rest_api_v0.views import OrganizationViewSet, DepartmentViewSet, EmployeeSets, \
     RegistratorViews, ControllerViews
 from idenick_rest_api_v0.views import get_current_user
-
-
+from django.conf.urls import url
 
 router = DefaultRouter()
 router.register(r'organizations', OrganizationViewSet, basename='Organization')
 router.register(r'departments', DepartmentViewSet, basename='Department')
+router.register(r'departments/(?P<department_id>[0-9]+)/employees', EmployeeSets.ByDepartmentViewSet, basename='Employee')
 router.register(r'employees', EmployeeSets.SimpleViewSet, basename='Employee')
 router.register(r'organizations/(?P<organization_id>[0-9]+)/registrators', RegistratorViews.ByOrganizationViewSet, basename='Login')
 router.register(r'organizations/(?P<organization_id>[0-9]+)/controllers', ControllerViews.ByOrganizationViewSet, basename='Login')

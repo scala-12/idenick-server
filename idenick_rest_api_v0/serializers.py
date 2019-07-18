@@ -6,6 +6,7 @@ from idenick_app.models import Organization, Department, Employee, Login, \
 
 
 class UserSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = User
         fields = [
@@ -13,6 +14,7 @@ class UserSerializer(serializers.ModelSerializer):
             'last_name',
             'first_name',
         ]
+
 
 class OrganizationSerializers:
 
@@ -98,34 +100,47 @@ class DepartmentSerializers:
                 'description',
                 'employees_count',
              ]
-        
-        
-class OrganizationDepartmentIdsSerializer(serializers.ModelSerializer):
-    id = serializers.ReadOnlyField(source='department.id')
-    organization = serializers.ReadOnlyField(source='department.organization_id')
-    
+
+
+class _DepartmentOfEmployeeSerializers(serializers.ModelSerializer):
+    department = DepartmentSerializers.ModelSerializer()
+
     class Meta:
-        model = Department
-        fields = [
-            'id',
-            'organization',
-        ]
-        
-        
-class EmployeeSerializer():
+        model = Employee2Department
+        fields = ['department']
+
+
+class EmployeeSerializers():
 
     class CreateSerializer(serializers.ModelSerializer):
 
         class Meta:
             model = Employee
             fields = [
-                'surname',
+                'last_name',
                 'first_name',
                 'patronymic',
             ]
     
     class ModelSerializer(serializers.ModelSerializer):
-        departments = OrganizationDepartmentIdsSerializer(many=True, read_only=True)
+
+        class Meta:
+            model = Employee
+            fields = [
+                'id',
+                'created_at',
+                'dropped_at',
+                'last_name',
+                'first_name',
+                'patronymic',
+                'organization',
+            ]
+    
+    class FullModelSerializer(serializers.ModelSerializer):
+        departments = _DepartmentOfEmployeeSerializers(many=True)
+#         departments = serializers.SerializerMethodField()
+#         def get_departments(self, obj):
+#             return DepartmentSerializers.ModelSerializer(Department.objects.filter(id__in=set(Employee2Department.objects.filter(employee_id=obj.id).values_list('department', flat=True))), many=True).data
         
         class Meta:
             model = Employee
@@ -133,10 +148,11 @@ class EmployeeSerializer():
                 'id',
                 'created_at',
                 'dropped_at',
-                'surname',
+                'last_name',
                 'first_name',
                 'patronymic',
                 'departments',
+                'organization',
             ]
 
 
