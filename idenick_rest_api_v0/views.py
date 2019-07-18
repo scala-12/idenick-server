@@ -1,6 +1,9 @@
 from abc import abstractmethod
+from enum import Enum
 
 from django.contrib.auth.models import User
+from django.db.models.expressions import Value
+from django.db.models.functions.text import Concat
 from django.db.models.query_utils import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
@@ -9,8 +12,9 @@ from rest_framework.response import Response
 
 from idenick_app.models import Organization, Department, Employee, Employee2Department, \
     Login
-from idenick_rest_api_v0.serializers import OrganizationSerializers, DepartmentSerializers, EmployeeSerializer, LoginSerializer, UserSerializer
-from enum import Enum
+import idenick_rest_api_v0
+from idenick_rest_api_v0.serializers import OrganizationSerializers, DepartmentSerializers, LoginSerializer, UserSerializer, \
+    EmployeeSerializers
 
 
 class ErrorMessage(Enum):
@@ -137,7 +141,6 @@ class OrganizationViewSet(_AbstractViewSet):
             update = Organization(**serializer.data)
         
         return {'update':update, 'serializer':serializer}
-        
     
     def delete(self, request, pk):
         queryset = Organization.objects.all()
@@ -248,85 +251,71 @@ class EmployeeSets:
 
     class _AbstractEmployeeViewSet(_AbstractViewSet):
         _serializer_classes = {
-            'list': EmployeeSerializer.ModelSerializer,
-            'retrieve': EmployeeSerializer.ModelSerializer,
-            'create': EmployeeSerializer.CreateSerializer,
-            'partial_update': EmployeeSerializer.CreateSerializer,
+            'list': EmployeeSerializers.ModelSerializer,
+            'retrieve': EmployeeSerializers.ModelSerializer,
+            'create': EmployeeSerializers.CreateSerializer,
+            'partial_update': EmployeeSerializers.CreateSerializer,
         }
         
-        def _get_queryset(self, request):
+        def _get_queryset(self, request, department_id=None, not_in=False):
             login = Login.objects.get(user=request.user)
     
             result = None
-            department = request.query_params.get('department', None)
-            employees_ids = None
-            if login.role == Login.CONTROLLER:
+            if (login.role == Login.CONTROLLER):
                 filtered_employees = Employee2Department.objects.filter(department__organization=login.organization)
-                employees_ids = map(lambda e2o : e2o.employee_id, filtered_employees if (department == None) else filtered_employees.filter(department=department))
-            elif login.role == Login.SUPERUSER:
-                organization = request.query_params.get('organization', None)
-                if not (organization is None):
-                    employees_ids = map(lambda e2o : e2o.employee, Employee2Department.objects.filter(department__organization=organization))
-                elif not (department is None):
-                    employees_ids = map(lambda e2d : e2d.employee, Employee2Department.objects.all().filter(department=department))
-                else:
-                    result = Employee.objects.all()
-            
-            if result == None:
+                if (department_id != None):
+                    filtered_employees = filtered_employees.filter(department_id=department_id)
+                employees_ids = filtered_employees.values_list('employee_id', flat=True)
                 result = Employee.objects.filter(id__in=employees_ids)
+            elif (login.role == Login.REGISTRATOR):
+                organization_employees = Employee.objects.filter(organization=login.organization)
+                if (department_id != None):
+                    all_employees_ids = organization_employees.values_list('id', flat=True)
+                    employees_ids = Employee2Department.objects.filter(employee_id__in=all_employees_ids).filter(department_id=department_id).values_list('employee_id', flat=True)
+                    if (not_in):
+                        result = Employee.objects.filter(~Q(id__in=employees_ids))
+                    else:
+                        result = Employee.objects.filter(id__in=employees_ids)
+                else:
+                    result = organization_employees
             
             return result
         
-        def _withOrganization(self, request):
+        def _withExtra(self, request, department_id=None):
             result = {}
             if (request.GET.__contains__('showorganization')):
                 login = Login.objects.get(user=request.user)
-                department = request.query_params.get('department', None)
+                organization = OrganizationSerializers.ModelSerializer(login.organization).data
                 
-                organization_id = login.organization_id if (department == None) else department.organization_id
-                organizations_queryset = Organization.objects.filter(id=organization_id)
-                organizations = map(lambda i: OrganizationSerializers.ModelSerializer(i).data, organizations_queryset)
-                organizations_by_id = {}
-                for o in organizations:
-                    organizations_by_id.update({o.get('id'): o})
-                
-                result = {'organizations': organizations_by_id}
+                result = {'organization': organization}
+                if department_id != None:
+                    result.update({'department': DepartmentSerializers.ModelSerializer(Department.objects.get(pk=department_id)).data})
             
             return result
+        
+        def _list_employees(self, request, queryset, department_id=None):
+            name_filter = request.GET.get('name', None)
+            if (name_filter != None) and (name_filter != ''):
+                queryset = queryset.annotate(
+                full_name=Concat('last_name', Value(' '), 'first_name', Value(' '), 'patronymic'),
+            ).filter(Q(full_name__icontains=name_filter) | Q(last_name__icontains=name_filter) | Q(first_name__icontains=name_filter) | Q(patronymic__icontains=name_filter))
+            
+            result = self._list_data(request, queryset)
+            result.update(self._withExtra(request, department_id))
+            
+            return self._response(result)
+        
+        def _retrieve_employee(self, request, pk, department_id=None):
+            result = self._retrieve_data(request, pk, self._get_queryset(request, department_id))
+            result.update(self._withExtra(request, department_id))
+            
+            employee_full = EmployeeSerializers.FullModelSerializer(Employee.objects.get(pk=result.get('data').get('id'))).data
+            if (request.GET.__contains__('showdepartments')):
+                result.update({'departments': map(lambda i: i.get('department'), employee_full.get('departments'))})
+            
+            return self._response(result)
     
     class SimpleViewSet(_AbstractEmployeeViewSet):
-
-        def list(self, request):
-            result = self._list_data(request, self._get_queryset(request))
-            result.update(self._withOrganization(request))
-            
-            return self._response(result)
-        
-        def retrieve(self, request, pk=None):
-            result = self._retrieve_data(request, pk, self._get_queryset(request))
-            result.update(self._withOrganization(request))
-            
-            return self._response(result)
-        
-        def create(self, request):
-            serializer_class = self.get_serializer_class()
-            serializer = serializer_class(data=request.data)
-            result = None
-            
-            if serializer.is_valid():
-                employee = Employee(**serializer.data)
-                employee.save()
-                    
-                departments = request.data.getlist('departments', None)
-                if not departments is None:
-                    for department_id in departments:
-                        if Department.objects.filter(id=department_id).exists():
-                            Employee2Department.objects.create(employee=employee, department=Department.objects.get(id=department_id))
-                result = self._response({'data': self._serializer_classes.get('retrieve')(employee).data})
-            else:   
-                result = self._response4update_n_create(message=self._get_validation_error_msg(serializer.errors, Employee))
-                
-            return result
         
         def partial_update(self, request, pk=None):
             queryset = Employee.objects.all()
@@ -335,20 +324,49 @@ class EmployeeSets:
             serializer_class = self.get_serializer_class()
             serializer = serializer_class(data=request.data)
             result = None
-            if serializer.is_valid():
+            login = Login.objects.get(user=request.user)
+            if serializer.is_valid() and (login.organization.id == employee.organization_id):
                 data = serializer.data
-                employee.surname = data.get('surname', employee.surname)
+                employee.last_name = data.get('last_name', employee.last_name)
                 employee.first_name = data.get('first_name', employee.first_name)
                 employee.patronymic = data.get('patronymic', employee.patronymic)
                 employee.save()
-                departments = request.data.getlist('departments', None)
-                Employee2Department.objects.filter(employee=employee).delete()
-                if not departments is None:
-                    for department_id in departments:
-                        if Department.objects.filter(id=department_id).exists():
-                            Employee2Department.objects.create(employee=employee, department=Department.objects.get(id=department_id))
-                result = self._response({'data': self._serializer_classes.get('retrieve')(employee).data})
+
+                departments_ids = request.data.getlist('departments', [])
+                departments = Department.objects.filter(organization_id=employee.organization_id).filter(id__in=departments_ids)
+                for department in departments:
+                    Employee2Department.objects.create(employee=employee, department=department)
+                    
+                result = self._response4update_n_create(data=employee)
             
+            return result
+
+        def list(self, request):
+            return self._list_employees(request, self._get_queryset(request))
+
+        def retrieve(self, request, pk):
+            return self._retrieve_employee(request, pk)
+        
+        def create(self, request):
+            serializer_class = self.get_serializer_class()
+            serializer = serializer_class(data=request.data)
+            result = None
+            
+            login = Login.objects.get(user=request.user)
+            if serializer.is_valid() and (login.role == Login.REGISTRATOR):
+                employee = Employee(**serializer.data)
+                employee.organization = login.organization
+                employee.save()
+                    
+                departments_ids = request.data.getlist('departments', [])
+                departments = Department.objects.filter(organization_id=employee.organization_id).filter(id__in=departments_ids)
+                for department in departments:
+                    Employee2Department.objects.create(employee=employee, department=department)
+                    
+                result = self._response4update_n_create(data=employee, code=status.HTTP_201_CREATED)
+            else:   
+                result = self._response4update_n_create(message=self._get_validation_error_msg(serializer.errors, Employee))
+                
             return result
         
         def delete(self, request, pk):
@@ -356,6 +374,21 @@ class EmployeeSets:
             employee = get_object_or_404(queryset, pk=pk)
             employee.delete()
             return self._response({'message': 'Employee was deleted', 'data': self._serializer_classes.get('retrieve')(employee).data})
+        
+    class ByDepartmentViewSet(_AbstractEmployeeViewSet):
+
+        def list(self, request, department_id):
+            queryset = None
+            if (request.path_info.endswith(idenick_rest_api_v0.urls.other_employees) or
+                request.path_info.endswith(idenick_rest_api_v0.urls.other_employees + '/')):
+                queryset = self._get_queryset(request, department_id, True)
+            else:
+                queryset = self._get_queryset(request, department_id)
+                
+            return self._list_employees(request, queryset, department_id)
+
+        def retrieve(self, request, department_id, pk):
+            return self._retrieve_employee(request, pk, department_id)
 
 
 class _UserViewSet(_AbstractViewSet):
@@ -386,7 +419,10 @@ class _UserViewSet(_AbstractViewSet):
         name_filter = request.GET.get('name', None)
         users_ids = None
         if (name_filter != None) and (name_filter != ''):
-            users_ids = set(map(lambda i: UserSerializer(i).data.get('id'), User.objects.filter(Q(last_name__icontains=name_filter) | Q(first_name__icontains=name_filter))))
+            users_ids = set(map(lambda i: UserSerializer(i).data.get('id'), User.objects.annotate(
+                full_name_1=Concat('last_name', Value(' '), 'first_name'),
+                full_name_2=Concat('first_name', Value(' '), 'last_name'),
+            ).filter(Q(full_name_1__icontains=name_filter) | Q(full_name_2__icontains=name_filter) | Q(last_name__icontains=name_filter) | Q(first_name__icontains=name_filter))))
             queryset = queryset.filter(user_id__in=users_ids)
         
         result = self._list_data(request, queryset)
@@ -512,3 +548,34 @@ def get_current_user(request):
         response = None
     
     return Response({'data': response})
+
+
+@api_view(['POST'])
+def add_employees(request, department_id):
+    return _add_or_remove_employees(request, department_id, True)
+
+
+@api_view(['POST'])
+def remove_employees(request, department_id):
+    return _add_or_remove_employees(request, department_id, False)
+
+
+def _add_or_remove_employees(request, department_id, do_add):
+    login = Login.objects.get(user=request.user)
+    success = []
+    failure = []
+    if (login.role == Login.REGISTRATOR):
+        exitst_employees = set(Employee2Department.objects.filter(department_id=department_id).values_list('employee_id', flat=True))
+        getted_employees = set(map(lambda i: int(i), set(request.POST.get('ids').split(','))))
+        
+        success = None
+        if do_add:
+            success = getted_employees.difference(exitst_employees)
+            for e_id in success:
+                Employee2Department.objects.create(employee_id=e_id, department_id=department_id)
+        else:
+            success = getted_employees.intersection(exitst_employees)
+            Employee2Department.objects.filter(department_id=department_id).filter(employee_id__in=success).delete()
+        failure = getted_employees.difference(success)
+    
+    return Response({'data': {'success': success, 'failure': failure}})
