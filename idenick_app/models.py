@@ -97,6 +97,7 @@ class Employee2Department(_AbstractEntry4Old):
     
     class Meta:
         db_table = 'users_usergroup'
+        unique_together = (('department', 'employee'),)
 
 
 class Login(models.Model):
