@@ -152,4 +152,45 @@ def create_user_profile(sender, instance, created, **kwargs):
 @receiver(post_save, sender=User)
 def save_user_profile(sender, instance, **kwargs):
     instance.login.save()
-        
+
+
+class Device(_AbstractEntry4Old):
+    mqtt = models.CharField(max_length=500, db_column='mqttid', default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=64)
+    description = models.CharField(max_length=500, blank=True)
+    device_type = models.IntegerField(db_column='type', default=0)
+    config = models.CharField(max_length=2000)
+    
+    def __str__(self):
+        return self._str() + ('mqtt[%s] [%s] [%s] [%s] with config [%s]' % (self.mqtt, self.name, self.device_type, self.description, self.config))
+    
+    class Meta:
+        db_table = 'devices'
+
+
+class DeviceGroup(_AbstractEntry4Old):
+    name = models.CharField(max_length=64)
+    rights = models.IntegerField(default=0)
+    description = models.CharField(max_length=500, blank=True)
+    
+    def __str__(self):
+        return self._str() + ('[%s] [%s] with rigth [%s]' % (self.name, self.description, self.rights))
+    
+    class Meta:
+        db_table = 'querylog'
+
+
+class EmployeeRequest(_AbstractEntry4Old):
+    moment = models.DateTimeField(db_column='stamp', auto_now_add=True)
+    request_type = models.IntegerField(db_column='request', default=0)
+    response_type = models.IntegerField(db_column='result', default=0)
+    description = models.CharField(max_length=500, blank=True)
+    algorithm_type = models.IntegerField(db_column='algorithm', default=0)
+    employee = models.ForeignKey('Employee', db_column='userid', on_delete=models.CASCADE)
+    device = models.ForeignKey('Device', db_column='deviceid', on_delete=models.CASCADE)
+    
+    def __str__(self):
+        return self._str() + ('[%s] with [%s] in [%s] do [%s] with result [%s] (%s)' % (self.employee, self.device, self.moment, self.request_type, self.response_type, self.description))
+    
+    class Meta:
+        db_table = 'querylog'
