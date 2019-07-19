@@ -34,6 +34,9 @@ class _AbstractEntry4Old(models.Model):
     class Meta:
         abstract = True
         ordering = ["created_at"]
+    
+    def _str(self):
+        return 'id[%s] ' % (self.id)
 
 
 class Employee(_AbstractEntry4Old):
@@ -44,7 +47,7 @@ class Employee(_AbstractEntry4Old):
     patronymic = models.CharField(max_length=64)
     
     def __str__(self):
-        return '%s %s %s %s' % (self.id, self.last_name, self.first_name, self.patronymic)
+        return self._str() + ('%s %s %s' % (self.last_name, self.first_name, self.patronymic))
     
     class Meta:
         db_table = 'users'
@@ -57,7 +60,7 @@ class Organization(_AbstractEntry4Old):
     phone = models.CharField(max_length=50, blank=True)
     
     def __str__(self):
-        return '%s %s %s %s' % (self.id, self.name, self.address, self.phone)
+        return self._str() + ('%s %s %s' % (self.name, self.address, self.phone))
     
     class Meta:
         db_table = 'company'
@@ -85,7 +88,7 @@ class Department(_AbstractEntry4Old):
     description = models.CharField(max_length=500, blank=True)
     
     def __str__(self):
-        return '%s %s %s %s %s %s' % (self.id, self.organization, self.name, self.rights, self.address, self.description)
+        return self._str() + ('%s %s %s %s %s %s' % (self.organization, self.name, self.rights, self.address, self.description))
     
     class Meta:
         db_table = 'usergroup'
@@ -96,7 +99,7 @@ class Employee2Department(_AbstractEntry4Old):
     employee = models.ForeignKey('Employee', db_column='usersid', related_name='departments', on_delete=models.CASCADE)
     
     def __str__(self):
-        return 'd %s, e %s' % (self.department, self.employee)
+        return self._str() + ('[%s] in [%s]' % (self.employee, self.department))
     
     class Meta:
         db_table = 'users_usergroup'
@@ -136,7 +139,7 @@ class Login(models.Model):
         return super(self.__class__, self).delete(*args, **kwargs)
     
     def __str__(self):
-        return '%s %s %s %s %s' % (self.id, self.organization, self.user.username, self.user.first_name + ' ' + self.user.last_name, self.get_role_display())
+        return self._str() + ('%s %s %s %s' % (self.organization, self.user.username, self.user.first_name + ' ' + self.user.last_name, self.get_role_display()))
 
 
 @receiver(post_save, sender=User)
