@@ -140,7 +140,7 @@ class Login(models.Model):
         return super(self.__class__, self).delete(*args, **kwargs)
     
     def __str__(self):
-        return self._str() + ('guid[%s] login[%s] [%s] [%s] with role [%s]' % (self.guid, self.organization, self.user.username, self.user.first_name + ' ' + self.user.last_name, self.get_role_display()))
+        return 'id[%s] guid[%s] login[%s] [%s] [%s] with role [%s]' % (self.id, self.guid, self.organization, self.user.username, self.user.first_name + ' ' + self.user.last_name, self.get_role_display())
 
 
 @receiver(post_save, sender=User)
