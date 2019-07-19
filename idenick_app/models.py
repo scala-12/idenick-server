@@ -92,6 +92,7 @@ class Department(_AbstractEntry4Old):
     
     class Meta:
         db_table = 'usergroup'
+        unique_together = (('organization', 'name'),)
 
 
 class Employee2Department(_AbstractEntry4Old):
