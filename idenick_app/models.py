@@ -177,7 +177,7 @@ class DeviceGroup(_AbstractEntry4Old):
         return self._str() + ('[%s] [%s] with rigth [%s]' % (self.name, self.description, self.rights))
     
     class Meta:
-        db_table = 'querylog'
+        db_table = 'devicegroup'
 
 
 class EmployeeRequest(_AbstractEntry4Old):
