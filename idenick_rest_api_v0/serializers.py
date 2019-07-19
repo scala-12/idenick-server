@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from idenick_app.models import Organization, Department, Employee, Login, \
     Employee2Department
+from django.http.request import QueryDict
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -68,18 +69,17 @@ class DepartmentSerializers:
                 'rights',
                 'address',
                 'description',
+                'organization',
             ]
-
-    class UpdateSerializer(serializers.ModelSerializer):
-
-        class Meta:
-            model = Department
-            fields = [
-                'name',
-                'rights',
-                'address',
-                'description',
-            ]
+        
+        def to_representation(self, obj):
+            represent = QueryDict('', mutable=True)
+            represent.update(obj)
+            rights = obj.get('rights')
+            represent.__setitem__('rights', 0 if (rights == '') else int(rights))
+            represent.__setitem__('organization', Organization.objects.get(pk=int(obj.get('organization'))))
+            
+            return represent
     
     class ModelSerializer(serializers.ModelSerializer):
         employees_count = serializers.SerializerMethodField()

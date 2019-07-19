@@ -15,6 +15,7 @@ from idenick_app.models import Organization, Department, Employee, Employee2Depa
 import idenick_rest_api_v0
 from idenick_rest_api_v0.serializers import OrganizationSerializers, DepartmentSerializers, LoginSerializer, UserSerializer, \
     EmployeeSerializers
+from django.http.request import QueryDict
 
 
 class ErrorMessage(Enum):
@@ -56,20 +57,48 @@ class _AbstractViewSet(viewsets.ViewSet):
         msg_arr = []
         for field in errors.keys():
             sub_err = []
+            err_prefix = ''
             for err in errors.get(field):
-                sub_msg = err.capitalize()
-                verbose_name = object_class._meta.get_field(field).verbose_name
+                sub_msg = None
+                if (field == 'non_field_errors'):
+                    if (err.code == 'unique') and (object_class == Department):
+                        err_prefix = 'Название: '
+                        sub_msg = 'Подразделение с таким названием уже существует'
+                    else:
+                        sub_msg = err.capitalize()
+                else:
+                    sub_msg = err.capitalize()
+
+                sub_err.append(sub_msg)
+            
+            sub_err_str = ', '.join(sub_err)
+            if (field != 'non_field_errors'):
+                err_prefix = field + ': '
                 if (update_verbose):
+                    verbose_name = object_class._meta.get_field(field).verbose_name
                     verbose_end = ''
                     if (verbose_name.endswith('е')):
                         verbose_end = 'м'
                         
-                    sub_msg = sub_msg.replace(verbose_name, verbose_name + verbose_end)
-                sub_err.append(sub_msg)
-            msg_arr.append(verbose_name.capitalize() + ': ' + ', '.join(sub_err))
+                    sub_err_str = sub_err_str.replace(verbose_name, verbose_name + verbose_end)
+            
+            msg_arr.append(err_prefix + sub_err_str)
         
         return '\n'.join(msg_arr).replace('.,', ',')
+    
+    def _alternative_valid(self, pk, data, errors, extra=None):
+        return False
 
+    def _validate_on_update(self, pk, serializer_class, Object_class, data, extra=None):
+        update = None
+        serializer = serializer_class(data=data)
+        if (serializer.is_valid()):
+            update = Object_class(**serializer.data)
+        elif self._alternative_valid(pk, data, serializer.errors, extra):
+            serializer = serializer_class(data)
+            update = Object_class(**serializer.data)
+        
+        return {'update':update, 'serializer':serializer}
 
 # for admin
 class OrganizationViewSet(_AbstractViewSet):
@@ -115,10 +144,8 @@ class OrganizationViewSet(_AbstractViewSet):
         serializer_class = self.get_serializer_class()
         result = None
         
-        valid_result = self._validate_on_update(pk, serializer_class, request.data)
-        
+        valid_result = self._validate_on_update(pk, serializer_class, Organization, request.data)
         serializer = valid_result.get('serializer')
-        
         update = valid_result.get('update')
         if update != None:
             organization.name = update.name
@@ -131,16 +158,8 @@ class OrganizationViewSet(_AbstractViewSet):
         
         return result
     
-    def _validate_on_update(self, pk, serializer_class, data):
-        update = None
-        serializer = serializer_class(data=data)
-        if (serializer.is_valid()):
-            update = Organization(**serializer.data)
-        elif (len(serializer.errors.keys()) == 1) and serializer.errors.keys().__contains__('name') and (serializer.errors.get('name')[0].code == 'unique') and not Organization.objects.filter(name=data.get('name')).filter(~Q(id=pk)).exists():
-            serializer = serializer_class(data)
-            update = Organization(**serializer.data)
-        
-        return {'update':update, 'serializer':serializer}
+    def _alternative_valid(self, pk, data, errors, extra):
+        return (len(errors.keys()) == 1) and errors.keys().__contains__('name') and (errors.get('name')[0].code == 'unique') and not Organization.objects.filter(name=data.get('name')).filter(~Q(id=pk)).exists()
     
     def delete(self, request, pk):
         queryset = Organization.objects.all()
@@ -157,7 +176,7 @@ class DepartmentViewSet(_AbstractViewSet):
         'list': DepartmentSerializers.ModelSerializer,
         'retrieve': DepartmentSerializers.ModelSerializer,
         'create': DepartmentSerializers.CreateSerializer,
-        'partial_update': DepartmentSerializers.UpdateSerializer,
+        'partial_update': DepartmentSerializers.CreateSerializer,
     }
     
     def _get_queryset(self, request):
@@ -200,13 +219,17 @@ class DepartmentViewSet(_AbstractViewSet):
     
     def create(self, request):
         serializer_class = self.get_serializer_class()
-        serializer = serializer_class(data=request.data)
+        
+        department_data = QueryDict('', mutable=True)
+        department_data.update(request.data)
+        department_data.update({'organization': Login.objects.get(user=request.user).organization_id})
+        serializer = serializer_class(data=department_data)
         result = None
         
         if serializer.is_valid():
             department = Department(**serializer.data, organization=Login.objects.get(user=request.user).organization)
             if Department.objects.filter(name=department.name).exists():
-                result = self._response4update_n_create(message=ErrorMessage.UNIQUE_DEPARTMENT_NAME)
+                result = self._response4update_n_create(message=ErrorMessage.UNIQUE_DEPARTMENT_NAME.value)
             else:
                 department.save()
                 result = self._response4update_n_create(data=department, code=status.HTTP_201_CREATED)
@@ -219,25 +242,30 @@ class DepartmentViewSet(_AbstractViewSet):
         department = get_object_or_404(self._get_queryset(request), pk=pk)
         
         serializer_class = self.get_serializer_class()
-        serializer = serializer_class(data=request.data)
         result = None
-        if serializer.is_valid():
-            update = Department(**serializer.data)
-            if update.name:
-                exists = Department.objects.filter(organization__id=department.organization_id).filter(name=update.name).filter(~Q(id=department.id))
-                if not exists.exists():
-                    department.name = update.name
-                    department.rights = update.rights
-                    department.address = update.address
-                    department.description = update.description
-                    department.save()
-                    result = self._response4update_n_create(data=department)
-                else:
-                    result = self._response4update_n_create(message='Name is not unique')
-            else:
-                result = self._response4update_n_create(message='Name is empty')
+        
+        department_data = QueryDict('', mutable=True)
+        department_data.update(request.data)
+        organization_id = {'organization': Login.objects.get(user=request.user).organization_id}
+        department_data.update(organization_id)
+        
+        valid_result = self._validate_on_update(pk, serializer_class, Department, department_data, organization_id)
+        serializer = valid_result.get('serializer')
+        update = valid_result.get('update')
+        if update != None:
+            department.name = update.name
+            department.rights = update.rights
+            department.address = update.address
+            department.description = update.description
+            department.save()
+            result = self._response4update_n_create(data=department)
+        else:
+            result = self._response4update_n_create(message=self._get_validation_error_msg(serializer.errors, Department))
         
         return result
+    
+    def _alternative_valid(self, pk, data, errors, extra):
+        return (len(errors.keys()) == 1) and errors.keys().__contains__('non_field_errors') and (errors.get('non_field_errors')[0].code == 'unique') and not Department.objects.filter(Q(name=data.get('name')) & Q(organization_id=extra.get('organization'))).filter(~Q(id=pk)).exists()
     
     def delete(self, request, pk):
         queryset = Department.objects.all()
@@ -484,6 +512,9 @@ class _UserViewSet(_AbstractViewSet):
             user.first_name = update.get('first_name')
         if update.get('last_name', '') != '':
             user.last_name = update.get('last_name')
+        # it is for mysql-connector-python
+        user.is_superuser = False
+        user.is_staff = False
         
         user.save()
         result = self._response4update_n_create(data=login)
