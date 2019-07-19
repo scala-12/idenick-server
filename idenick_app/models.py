@@ -107,7 +107,6 @@ class Employee2Department(_AbstractEntry4Old):
 
 
 class Login(models.Model):
-    SUPERUSER = 'su'
     ADMIN = 'adm'
     CONTROLLER = 'ctrl'
     REGISTRATOR = 'reg'
@@ -116,7 +115,6 @@ class Login(models.Model):
         (ADMIN, 'admin'),
         (CONTROLLER, 'controller'),
         (REGISTRATOR, 'registrator'),
-        (SUPERUSER, 'superuser'),
         (NOT_SELECTED, 'not selected'),
     ]
     

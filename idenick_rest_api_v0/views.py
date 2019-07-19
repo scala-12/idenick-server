@@ -164,7 +164,7 @@ class DepartmentViewSet(_AbstractViewSet):
         login = Login.objects.get(user=request.user)
         result = None
         role = login.role
-        if (role == Login.SUPERUSER) or (role == Login.ADMIN):
+        if (role == Login.ADMIN):
             result = Department.objects.all()
         elif (role == Login.CONTROLLER) or (role == Login.REGISTRATOR):
             result = Department.objects.filter(organization=login.organization)
