@@ -60,7 +60,7 @@ class Organization(_AbstractEntry4Old):
     phone = models.CharField(max_length=50, blank=True)
     
     def __str__(self):
-        return self._str() + ('%s %s %s' % (self.name, self.address, self.phone))
+        return self._str() + ('[%s] address[%s] phone[%s]' % (self.name, self.address, self.phone))
     
     class Meta:
         db_table = 'company'
@@ -88,7 +88,7 @@ class Department(_AbstractEntry4Old):
     description = models.CharField(max_length=500, blank=True)
     
     def __str__(self):
-        return self._str() + ('%s %s %s %s %s %s' % (self.organization, self.name, self.rights, self.address, self.description))
+        return self._str() + ('organization[%s] [%s] with right[%s] address[%s] (%s)' % (self.organization, self.name, self.rights, self.address, self.description))
     
     class Meta:
         db_table = 'usergroup'
@@ -140,7 +140,7 @@ class Login(models.Model):
         return super(self.__class__, self).delete(*args, **kwargs)
     
     def __str__(self):
-        return self._str() + ('guid[%s] %s %s %s %s' % (self.guid, self.organization, self.user.username, self.user.first_name + ' ' + self.user.last_name, self.get_role_display()))
+        return self._str() + ('guid[%s] login[%s] [%s] [%s] with role [%s]' % (self.guid, self.organization, self.user.username, self.user.first_name + ' ' + self.user.last_name, self.get_role_display()))
 
 
 @receiver(post_save, sender=User)
