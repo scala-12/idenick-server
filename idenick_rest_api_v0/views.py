@@ -195,6 +195,10 @@ class DepartmentViewSet(_AbstractViewSet):
         if (name_filter != None) and (name_filter != ''):
             queryset = queryset.filter(name__icontains=name_filter)
         
+        employee_filter = request.GET.get('employee', None)
+        if (employee_filter != None) and (employee_filter != ''):
+            queryset = queryset.filter(id__in=Employee2Department.objects.filter(employee_id=int(employee_filter)).values_list('department_id', flat=True))
+        
         result = self._list_data(request, queryset)
         
         if (request.GET.__contains__('showorganization')):
