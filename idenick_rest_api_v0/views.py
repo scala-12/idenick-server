@@ -73,16 +73,20 @@ class _AbstractViewSet(viewsets.ViewSet):
             
             sub_err_str = ', '.join(sub_err)
             if (field != 'non_field_errors'):
-                err_prefix = field + ': '
+                err_prefix = None
                 if (update_verbose):
-                    verbose_name = object_class._meta.get_field(field).verbose_name
+                    verbose_name = str(object_class._meta.get_field(field).verbose_name)
                     verbose_end = ''
                     if (verbose_name.endswith('е')):
                         verbose_end = 'м'
                         
                     sub_err_str = sub_err_str.replace(verbose_name, verbose_name + verbose_end)
+                    err_prefix = verbose_name
+                else:
+                    err_prefix = field
+                err_prefix += ': '
             
-            msg_arr.append(err_prefix + sub_err_str)
+            msg_arr.append(err_prefix.capitalize() + sub_err_str)
         
         return '\n'.join(msg_arr).replace('.,', ',')
     
@@ -231,7 +235,7 @@ class DepartmentViewSet(_AbstractViewSet):
         result = None
         
         if serializer.is_valid():
-            department = Department(**serializer.data, organization=Login.objects.get(user=request.user).organization)
+            department = Department(**serializer.data)
             if Department.objects.filter(name=department.name).exists():
                 result = self._response4update_n_create(message=ErrorMessage.UNIQUE_DEPARTMENT_NAME.value)
             else:
@@ -501,7 +505,7 @@ class _UserViewSet(_AbstractViewSet):
             else:
                 result = self._response4update_n_create(message='Name is empty')
         else:   
-            result = self._response4update_n_create(message=self._get_validation_error_msg(serializer.errors, User, False))
+            result = self._response4update_n_create(message=self._get_validation_error_msg(serializer.errors, User, True))
             
         return result
     
