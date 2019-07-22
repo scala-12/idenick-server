@@ -33,6 +33,7 @@ class OrganizationSerializers:
         departments_count = serializers.SerializerMethodField()
         controllers_count = serializers.SerializerMethodField()
         registrators_count = serializers.SerializerMethodField()
+        employees_count = serializers.SerializerMethodField()
         
         def get_departments_count(self, obj):
             return Department.objects.filter(organization=obj).count()
@@ -42,6 +43,9 @@ class OrganizationSerializers:
         
         def get_registrators_count(self, obj):
             return Login.objects.filter(role=Login.REGISTRATOR, organization=obj).count()
+
+        def get_employees_count(self, obj):
+            return Employee.objects.filter(organization=obj).count()
 
         class Meta:
             model = Organization
@@ -55,6 +59,7 @@ class OrganizationSerializers:
                 'departments_count',
                 'controllers_count',
                 'registrators_count',
+                'employees_count',
             ]
 
 
@@ -73,11 +78,15 @@ class DepartmentSerializers:
             ]
         
         def to_representation(self, obj):
-            represent = QueryDict('', mutable=True)
-            represent.update(obj)
-            rights = obj.get('rights')
-            represent.__setitem__('rights', 0 if (rights == '') else int(rights))
-            represent.__setitem__('organization', Organization.objects.get(pk=int(obj.get('organization'))))
+            represent = None
+            if not(isinstance(obj.get('rights'), int)) or not(isinstance(obj.get('organization'), Organization)):
+                represent = QueryDict('', mutable=True)
+                represent.update(obj)
+                rights = obj.get('rights')
+                represent.__setitem__('rights', 0 if (rights == '') else int(rights))
+                represent.__setitem__('organization', Organization.objects.get(pk=int(obj.get('organization'))))
+            else:
+                represent = obj
             
             return represent
     
