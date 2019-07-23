@@ -25,7 +25,7 @@ SECRET_KEY = '488_+)2%#d6=tn)5#7#^ps#!@1ok4*r%+qnde*#qj#z!!e1a9i'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'tgu.idenick.ru']
 
 CORS_ORIGIN_ALLOW_ALL = True
 
