@@ -415,8 +415,8 @@ class EmployeeSets:
 
         def list(self, request, department_id):
             queryset = None
-            if (request.path_info.endswith(idenick_rest_api_v0.urls.other_employees) or
-                request.path_info.endswith(idenick_rest_api_v0.urls.other_employees + '/')):
+            if (request.path_info.endswith(idenick_rest_api_v0.urls.OTHER_EMPLOYEES) or
+                request.path_info.endswith(idenick_rest_api_v0.urls.OTHER_EMPLOYEES + '/')):
                 queryset = self._get_queryset(request, department_id, True)
             else:
                 queryset = self._get_queryset(request, department_id)
