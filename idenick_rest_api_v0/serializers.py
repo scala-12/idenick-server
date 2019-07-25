@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from rest_framework import serializers
 
 from idenick_app.models import Organization, Department, Employee, Login, \
-    Employee2Department
+    Employee2Department, EmployeeRequest
 from django.http.request import QueryDict
 
 
@@ -208,3 +208,22 @@ class LoginSerializer():
                 'last_name',
                 'is_active',
             ]
+
+
+class EmployeeRequestSerializer(serializers.ModelSerializer):
+    employee = serializers.PrimaryKeyRelatedField(read_only=True)
+    device = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = EmployeeRequest
+        fields = [
+            'id',
+            'employee',
+            'device',
+            'moment',
+            'request_type',
+            'response_type',
+            'description',
+            'algorithm_type',
+        ]
+
