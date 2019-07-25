@@ -1,5 +1,3 @@
-from corsheaders.defaults import default_headers
-
 """
 Django settings for idenick_project project.
 
@@ -25,23 +23,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECRET_KEY = '488_+)2%#d6=tn)5#7#^ps#!@1ok4*r%+qnde*#qj#z!!e1a9i'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'tgu.idenick.ru']
-
-CORS_ORIGIN_ALLOW_ALL = True
-CORS_ALLOW_METHODS = (
-    'GET',
-    'OPTIONS',
-    'PATCH',
-    'POST',
-)
-CORS_ALLOW_HEADERS = default_headers + (
-    'access-control-expose-headers',
-)
-CORS_EXPOSE_HEADERS = (
-    'content-disposition',
-)
 
 # Application definition
 
@@ -52,16 +36,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-	
+
     'idenick_app',
 	'rest_framework',
     'rest_framework.authtoken',
     'djoser',
-    'corsheaders',
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -73,10 +55,26 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'idenick_project.urls'
 
+REACT_BUILD = os.path.join(BASE_DIR, os.path.join('static', os.path.join('idenick-web-client','build')))
+STATIC_URL = '/static/'
+
+STATICFILES_DIRS = [
+    REACT_BUILD,
+    os.path.join(REACT_BUILD,'static'),
+]
+
+STATICFILES_FINDERS = (
+
+'django.contrib.staticfiles.finders.FileSystemFinder',
+
+'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+
+)
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [REACT_BUILD],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -137,14 +135,6 @@ USE_I18N = True
 USE_L10N = True
 
 USE_TZ = True
-
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/2.2/howto/static-files/
-
-STATIC_URL = '/static/'
-
-STATIC_ROOT = os.path.join(BASE_DIR, 'static') #на будущее
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
