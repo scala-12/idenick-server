@@ -47,7 +47,10 @@ class Employee(_AbstractEntry4Old):
     patronymic = models.CharField(max_length=64)
     
     def __str__(self):
-        return self._str() + ('%s %s %s' % (self.last_name, self.first_name, self.patronymic))
+        return self._str() + self.get_full_name()
+    
+    def get_full_name(self):
+        return '%s %s %s' % (self.last_name, self.first_name, self.patronymic)
     
     class Meta:
         db_table = 'users'
@@ -155,10 +158,10 @@ def save_user_profile(sender, instance, **kwargs):
 
 class Device(_AbstractEntry4Old):
     mqtt = models.CharField(max_length=500, db_column='mqttid', default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=64)
+    name = models.CharField(max_length=64, unique=True, verbose_name='название')
     description = models.CharField(max_length=500, blank=True)
     device_type = models.IntegerField(db_column='type', default=0)
-    config = models.CharField(max_length=2000)
+    config = models.CharField(max_length=2000, blank=True)
     
     def __str__(self):
         return self._str() + ('mqtt[%s] [%s] [%s] [%s] with config [%s]' % (self.mqtt, self.name, self.device_type, self.description, self.config))
