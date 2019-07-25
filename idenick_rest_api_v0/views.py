@@ -637,10 +637,10 @@ def get_report_file(request):
         worksheet.write(row, 0, rl.employee.get_full_name())
         worksheet.write(row, 1, rl.device.name)
         worksheet.write(row, 2, rl.moment.strftime('%Y-%m-%d %H:%M:%S'))
-        worksheet.write(row, 3, rl.request_type)
-        worksheet.write(row, 4, rl.response_type)
+        worksheet.write(row, 3, 0 if rl.request_type is None else rl.request_type)
+        worksheet.write(row, 4, 0 if rl.response_type is None else rl.response_type)
         worksheet.write(row, 5, rl.description)
-        worksheet.write(row, 6, rl.algorithm_type)
+        worksheet.write(row, 6, 0 if rl.algorithm_type is None else rl.algorithm_type)
         row += 1
 
     get_max_field_lenght_list = lambda f, caption=None: 4 + max(list(len(str(s)) for s in queryset.distinct().values_list(f, flat=True)) + [0 if caption == None else len(caption)])
