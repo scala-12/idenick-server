@@ -1,3 +1,5 @@
+from corsheaders.defaults import default_headers
+
 """
 Django settings for idenick_project project.
 
@@ -28,7 +30,18 @@ DEBUG = True
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'tgu.idenick.ru']
 
 CORS_ORIGIN_ALLOW_ALL = True
-
+CORS_ALLOW_METHODS = (
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+)
+CORS_ALLOW_HEADERS = default_headers + (
+    'access-control-expose-headers',
+)
+CORS_EXPOSE_HEADERS = (
+    'content-disposition',
+)
 
 # Application definition
 
@@ -48,6 +61,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -55,7 +69,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
 ]
 
 ROOT_URLCONF = 'idenick_project.urls'
