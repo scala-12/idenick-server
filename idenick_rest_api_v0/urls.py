@@ -4,7 +4,8 @@ from rest_framework.routers import DefaultRouter
 
 from idenick_rest_api_v0.views import OrganizationViewSet, DepartmentViewSet, EmployeeSets, \
     RegistratorViews, ControllerViews
-from idenick_rest_api_v0.views import get_current_user, add_employees, remove_employees
+from idenick_rest_api_v0.views import get_current_user, get_report, get_report_file, \
+    add_employees, remove_employees
 
 
 OTHER_EMPLOYEES = 'others'
@@ -24,6 +25,8 @@ urlpatterns = router.urls
 
 urlpatterns += [
     path('currentUser/', get_current_user),
+    url('report/', get_report),
+    url('reportFile/', get_report_file),
     url('departments/(?P<department_id>[0-9]+)/addEmployees/', add_employees),
     url('departments/(?P<department_id>[0-9]+)/removeEmployees/', remove_employees),
 ]

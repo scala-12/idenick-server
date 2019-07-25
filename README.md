@@ -17,3 +17,4 @@
    pip install django-cors-headers
    pip install -U djoser
    ```
+1. Установить дополнение для создания Excel-файлов `pip install XlsxWriter`

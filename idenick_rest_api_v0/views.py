@@ -1,6 +1,8 @@
 from abc import abstractmethod
 from enum import Enum
 
+from django.http import FileResponse
+
 from django.contrib.auth.models import User
 from django.db.models.expressions import Value
 from django.db.models.functions.text import Concat
@@ -11,11 +13,14 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from idenick_app.models import Organization, Department, Employee, Employee2Department, \
-    Login
+    Login, EmployeeRequest
 import idenick_rest_api_v0
-from idenick_rest_api_v0.serializers import OrganizationSerializers, DepartmentSerializers, LoginSerializer, UserSerializer, \
-    EmployeeSerializers
+from idenick_rest_api_v0.serializers import OrganizationSerializers, DepartmentSerializers, \
+     LoginSerializer, UserSerializer, EmployeeSerializers, EmployeeRequestSerializer
 from django.http.request import QueryDict
+from datetime import datetime, timedelta
+import xlsxwriter
+import io
 
 
 class ErrorMessage(Enum):
@@ -588,6 +593,103 @@ def get_current_user(request):
     
     return Response({'data': response})
 
+
+def __get_report(request):
+    login = Login.objects.get(user=request.user)
+
+    start_date = datetime.strptime(request.GET.get('start'), "%Y%m%d")
+    end_date = datetime.strptime(request.GET.get('end'), "%Y%m%d") + timedelta(days=1, microseconds=-1)
+    employee_id = request.GET.get('employee', None)
+    
+    report_type = None
+    result = {}
+    queryset = EmployeeRequest.objects.filter(Q(employee__organization_id=login.organization_id) & Q(moment__range=(start_date, end_date)))
+    if employee_id is None:
+        department_id = request.GET.get('department', None)
+        if department_id is None:
+            report_type = 'by organization ' + login.organization.name
+        else:
+            department_employees = Employee2Department.objects.filter(department_id=department_id)
+            queryset = queryset.filter(employee_id__in=department_employees.values_list('department_id', flat=True))
+            department = Department.objects.get(pk=department_id)
+            result.update({'department': DepartmentSerializers.ModelSerializer(department).data})
+            report_type = 'by department' + department.name
+    else:
+        queryset = queryset.filter(employee_id=employee_id)
+        employee = Employee.objects.get(id=employee_id)
+        report_type = 'by employee' + employee.get_full_name()
+    
+    result.update({'queryset': queryset, 'type': report_type})
+    
+    return result
+
+@api_view(['GET'])
+def get_report_file(request):
+    report_data = __get_report(request)
+
+    output_file = io.BytesIO()
+    workbook = xlsxwriter.Workbook(output_file, {'in_memory': True})
+    worksheet = workbook.add_worksheet()
+
+    queryset = report_data.get('queryset')
+    row = 1
+    for rl in queryset:
+        worksheet.write(row, 0, rl.employee.get_full_name())
+        worksheet.write(row, 1, rl.device.name)
+        worksheet.write(row, 2, rl.moment.strftime('%Y-%m-%d %H:%M:%S'))
+        worksheet.write(row, 3, rl.request_type)
+        worksheet.write(row, 4, rl.response_type)
+        worksheet.write(row, 5, rl.description)
+        worksheet.write(row, 6, rl.algorithm_type)
+        row += 1
+
+    get_max_field_lenght_list = lambda f, caption=None: 4 + max(list(len(str(s)) for s in queryset.distinct().values_list(f, flat=True)) + [0 if caption == None else len(caption)])
+
+    max_employee_name_lenght = 4 + max(list(map(lambda e: len(e.get_full_name()), Employee.objects.filter(id__in=queryset.distinct().values_list('employee', flat=True)))) + [len('Сотрудник')])
+    worksheet.write(0, 0, 'Сотрудник')
+    worksheet.set_column(0, 0,  max_employee_name_lenght)
+    worksheet.write(0, 1, 'Устройство')
+    worksheet.set_column(1, 1,  get_max_field_lenght_list('device__name', 'Устройство'))
+    worksheet.write(0, 2, 'Дата')
+    worksheet.set_column(2, 2,  23)
+    worksheet.write(0, 3, 'Запрос')
+    worksheet.set_column(3, 3,  get_max_field_lenght_list('request_type', 'Запрос'))
+    worksheet.write(0, 4, 'Ответ')
+    worksheet.set_column(4, 4,  get_max_field_lenght_list('response_type', 'Ответ'))
+    worksheet.write(0, 5, 'Описание')
+    worksheet.set_column(5, 5,  get_max_field_lenght_list('description', 'Описание'))
+    worksheet.write(0, 6, 'Алгоритм')
+    worksheet.set_column(6, 6,  get_max_field_lenght_list('algorithm_type', 'Алгоритм'))
+
+    workbook.close()
+
+    output_file.seek(0)
+
+    file_name = 'Report ' + report_data.get('type') + ' ' + datetime.now().strftime('%Y_%m_%d') + '.xlsx'
+
+    response = FileResponse(streaming_content=output_file, as_attachment=True, filename=file_name, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Access-Control-Allow-Headers'] = 'Content-Type'
+
+    return response
+
+@api_view(['GET'])
+def get_report(request):
+    report_data = __get_report(request)
+    result = {'data': EmployeeRequestSerializer(report_data.get('queryset'), many=True).data}
+
+    if (request.GET.__contains__('full')):
+        report_data.update(organization=OrganizationSerializers.ModelSerializer(Organization.objects.get(pk=login.organization_id)).data)
+        
+        employees_ids = report_data.get('employees')
+        employees_queryset = Employee.objects.filter(id__in=employees_ids)
+        employees = map(lambda i: EmployeeSerializers.ModelSerializer(i).data, employees_queryset)
+        employees_by_id = {}
+        for o in employees:
+            employees_by_id.update({o.get('id'): o})
+        
+        result.update(employees=employees_by_id)
+    
+    return Response(result)
 
 @api_view(['POST'])
 def add_employees(request, department_id):
