@@ -55,26 +55,26 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'idenick_project.urls'
 
-REACT_BUILD = os.path.join(BASE_DIR, os.path.join('static', os.path.join('idenick-web-client','build')))
+ASSETS_ROOT = os.path.join(BASE_DIR, 'assets')
+
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+STATIC_REACT = os.path.join(STATIC_ROOT, 'react')
+STATIC_REACT_STATIC = os.path.join(STATIC_REACT, 'static')
+
 STATIC_URL = '/static/'
 
 STATICFILES_DIRS = [
-    REACT_BUILD,
-    os.path.join(REACT_BUILD,'static'),
+    ASSETS_ROOT,
 ]
 
-STATICFILES_FINDERS = (
-
-'django.contrib.staticfiles.finders.FileSystemFinder',
-
-'django.contrib.staticfiles.finders.AppDirectoriesFinder',
-
-)
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+]
 
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [REACT_BUILD],
+        'DIRS': [STATIC_REACT],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
