@@ -170,11 +170,12 @@ class Device(_AbstractEntry4Old):
     """Device model"""
     mqtt = models.CharField(
         max_length=500, db_column='mqttid', default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=64, unique=True,
-                            verbose_name='название')
+    name = models.CharField(max_length=64, verbose_name='название')
     description = models.CharField(max_length=500, blank=True)
     device_type = models.IntegerField(db_column='type', default=0)
     config = models.CharField(max_length=2000, blank=True)
+    organization = models.ForeignKey(
+        'Organization', on_delete=models.CASCADE, null=True, blank=True)
 
     def __str__(self):
         return self._str() + ('mqtt[%s] [%s] [%s] [%s] with config [%s]' % (self.mqtt, self.name,
@@ -182,6 +183,7 @@ class Device(_AbstractEntry4Old):
 
     class Meta:
         db_table = 'devices'
+        unique_together = (('organization', 'name'),)
 
 
 class DeviceGroup(_AbstractEntry4Old):

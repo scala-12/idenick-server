@@ -236,3 +236,46 @@ class EmployeeRequestSerializer(serializers.ModelSerializer):
             'algorithm_type',
         ]
 
+
+class DeviceSerializers:
+    """Serializers for device-model"""
+    class CreateSerializer(serializers.ModelSerializer):
+        """Serializer for create device-model"""
+        class Meta:
+            model = Device
+            fields = [
+                'name',
+                'description',
+                'organization',
+                'device_type',
+                'config',
+            ]
+
+        def to_representation(self, obj):
+            represent = None
+            if not(isinstance(obj.get('organization'), Organization)):
+                represent = QueryDict('', mutable=True)
+                represent.update(obj)
+                represent.__setitem__('organization', Organization.objects.get(
+                    pk=int(obj.get('organization'))))
+            else:
+                represent = obj
+
+            return represent
+
+    class ModelSerializer(serializers.ModelSerializer):
+        """Serializer for show device-model"""
+
+        class Meta:
+            model = Device
+            fields = [
+                'id',
+                'created_at',
+                'dropped_at',
+                'mqtt',
+                'name',
+                'description',
+                'organization',
+                'device_type',
+                'config',
+            ]

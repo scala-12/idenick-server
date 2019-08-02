@@ -3,11 +3,11 @@ from django.conf.urls import url
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from idenick_rest_api_v0.views import OrganizationViewSet, DepartmentViewSet, EmployeeSets, \
-    RegistratorViews, ControllerViews
-from idenick_rest_api_v0.views import get_current_user, get_report, get_report_file, \
-    add_employees, remove_employees
-
+from idenick_rest_api_v0.views import (ControllerViews, DepartmentViewSet,
+                                       EmployeeSets, OrganizationViewSet,
+                                       RegistratorViews, add_employees,
+                                       get_current_user, get_report,
+                                       get_report_file, remove_employees, DeviceViewSet)
 
 OTHER_EMPLOYEES = 'others'
 
@@ -27,6 +27,8 @@ ROUTER.register(r'registrators',
                 RegistratorViews.SimpleViewSet, basename='Login')
 ROUTER.register(r'controllers', ControllerViews.SimpleViewSet,
                 basename='Login')
+ROUTER.register(r'devices', DeviceViewSet,
+                basename='Device')
 
 urlpatterns = ROUTER.urls
 
