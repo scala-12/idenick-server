@@ -670,8 +670,14 @@ class DeviceViewSet(_AbstractViewSet):
         return self._response(result)
 
     def create(self, request):
+        device_data = QueryDict('', mutable=True)
+        device_data.update(request.data)
+        organization_id = {'organization': Login.objects.get(
+            user=request.user).organization_id}
+        device_data.update(organization_id)
+
         serializer_class = self.get_serializer_class()
-        serializer = serializer_class(data=request.data)
+        serializer = serializer_class(data=device_data)
         result = None
         if serializer.is_valid():
             device = Device(**serializer.data)
