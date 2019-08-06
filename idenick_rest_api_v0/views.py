@@ -73,7 +73,8 @@ class _AbstractViewSet(viewsets.ViewSet):
                 if (field == 'non_field_errors'):
                     if (err.code == 'unique') and ((object_class == Department) or (object_class == Device)):
                         err_prefix = 'Название: '
-                        sub_msg = ('Подразделение' if (object_class == Department) else 'Прибор') + ' с таким названием уже существует'
+                        sub_msg = ('Подразделение' if (
+                            object_class == Department) else 'Прибор') + ' с таким названием уже существует'
                     else:
                         sub_msg = err.capitalize()
                 else:
@@ -486,12 +487,12 @@ class _UserViewSet(_AbstractViewSet):
         'partial_update': LoginSerializer.UpdateSerializer,
     }
 
-    @abstractmethod
-    def _user_role(self):
-        pass
+    def _user_role(self, request):
+        return Login.REGISTRATOR if (Login.objects.get(user=request.user).role == Login.ADMIN) \
+            else Login.CONTROLLER
 
     def _get_queryset(self, request, organization_id=None):
-        result = Login.objects.filter(role=self._user_role())
+        result = Login.objects.filter(role=self._user_role(request))
         if (organization_id is None):
             login = Login.objects.get(user=request.user)
             if (login.role == Login.REGISTRATOR):
@@ -509,7 +510,8 @@ class _UserViewSet(_AbstractViewSet):
             users_ids = set(map(lambda i: UserSerializer(i).data.get('id'), User.objects.annotate(
                 full_name_1=Concat('last_name', Value(' '), 'first_name'),
                 full_name_2=Concat('first_name', Value(' '), 'last_name'),
-            ).filter(Q(full_name_1__icontains=name_filter) | Q(full_name_2__icontains=name_filter) | Q(last_name__icontains=name_filter) | Q(first_name__icontains=name_filter))))
+            ).filter(Q(full_name_1__icontains=name_filter) | Q(full_name_2__icontains=name_filter)
+                     | Q(last_name__icontains=name_filter) | Q(first_name__icontains=name_filter))))
             queryset = queryset.filter(user_id__in=users_ids)
 
         result = self._list_data(request, queryset)
@@ -529,9 +531,9 @@ class _UserViewSet(_AbstractViewSet):
 
         return self._response(result)
 
-    def _retrieve_user(self, request, organization_id=None, pk=None):
+    def _retrieve_user(self, request, pk=None):
         result = self._retrieve_data(request=request, pk=pk, queryset=self._get_queryset(
-            request, organization_id=organization_id))
+            request, organization_id=None))
         if (request.GET.__contains__('showorganization')):
             result.update({'organization': OrganizationSerializers.ModelSerializer(
                 Organization.objects.get(id=result.get('data').get('organization'))).data})
@@ -557,7 +559,7 @@ class _UserViewSet(_AbstractViewSet):
                 login = Login.objects.get(user=user)
                 login.organization = Organization.objects.get(
                     id=organization_id)
-                login.role = self._user_role()
+                login.role = self._user_role(request)
                 login.save()
                 result = self._response4update_n_create(
                     data=login, code=status.HTTP_201_CREATED)
@@ -591,50 +593,40 @@ class _UserViewSet(_AbstractViewSet):
         return result
 
 
+class UserViewSet(_UserViewSet):
+    def retrieve(self, request, pk=None):
+        return self._retrieve_user(request, pk=pk)
+
 # for admin
+
+
 class RegistratorViews:
 
     class ByOrganizationViewSet(_UserViewSet):
-
-        def _user_role(self):
-            return Login.REGISTRATOR
 
         def create(self, request, organization_id):
             return self._create(request, organization_id)
 
     class SimpleViewSet(_UserViewSet):
 
-        def _user_role(self):
-            return Login.REGISTRATOR
-
         def retrieve(self, request, pk=None):
-            return self._retrieve_user(request, organization_id=None, pk=pk)
+            return self._retrieve_user(request, pk=pk)
 
         def partial_update(self, request, pk=None):
             return self._partial_update(request, pk)
 
 
 # for registrator
-class ControllerViews:
+class ControllerViewSet(_UserViewSet):
 
-    class ByOrganizationViewSet(_UserViewSet):
+    def create(self, request):
+        return self._create(request, Login.objects.get(user=request.user).organization_id)
 
-        def _user_role(self):
-            return Login.CONTROLLER
+    def retrieve(self, request, pk=None):
+        return self._retrieve_user(request, pk)
 
-    class SimpleViewSet(_UserViewSet):
-
-        def _user_role(self):
-            return Login.CONTROLLER
-
-        def create(self, request):
-            return self._create(request, Login.objects.get(user=request.user).organization_id)
-
-        def retrieve(self, request, pk=None):
-            return self._retrieve_user(request, Login.objects.get(user=request.user).organization_id, pk)
-
-        def partial_update(self, request, pk=None):
-            return self._partial_update(request, pk)
+    def partial_update(self, request, pk=None):
+        return self._partial_update(request, pk)
 
 
 class DeviceViewSet(_AbstractViewSet):
