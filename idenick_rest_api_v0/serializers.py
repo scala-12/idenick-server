@@ -36,6 +36,7 @@ class OrganizationSerializers:
         controllers_count = serializers.SerializerMethodField()
         registrators_count = serializers.SerializerMethodField()
         employees_count = serializers.SerializerMethodField()
+        devices_count = serializers.SerializerMethodField()
 
         def get_departments_count(self, obj):
             return Department.objects.filter(organization=obj).count()
@@ -48,6 +49,9 @@ class OrganizationSerializers:
 
         def get_employees_count(self, obj):
             return Employee.objects.filter(organization=obj).count()
+        
+        def get_devices_count(self, obj):
+            return Device.objects.filter(organization=obj).count()
 
         class Meta:
             model = Organization
@@ -62,6 +66,7 @@ class OrganizationSerializers:
                 'controllers_count',
                 'registrators_count',
                 'employees_count',
+                'devices_count',
             ]
 
 
