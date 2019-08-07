@@ -85,17 +85,15 @@ class DepartmentSerializers:
             ]
 
         def to_representation(self, obj):
-            represent = None
-            if not(isinstance(obj.get('rights'), int)) or not(isinstance(obj.get('organization'), Organization)):
-                represent = QueryDict('', mutable=True)
-                represent.update(obj)
-                rights = obj.get('rights')
+            represent = QueryDict('', mutable=True)
+            represent.update(obj)
+            rights = obj.get('rights', '')
+            if not(isinstance(obj.get('rights'), int)):
                 represent.__setitem__('rights', 0 if (
                     rights == '') else int(rights))
+            if not(isinstance(obj.get('organization'), Organization)):
                 represent.__setitem__('organization', Organization.objects.get(
                     pk=int(obj.get('organization'))))
-            else:
-                represent = obj
 
             return represent
 
