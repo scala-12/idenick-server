@@ -247,6 +247,7 @@ class DeviceSerializers:
         class Meta:
             model = Device
             fields = [
+                'mqtt',
                 'name',
                 'description',
                 'organization',

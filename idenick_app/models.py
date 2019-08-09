@@ -168,8 +168,7 @@ def save_user_profile(sender, instance, **kwargs):
 
 class Device(_AbstractEntry4Old):
     """Device model"""
-    mqtt = models.CharField(
-        max_length=500, db_column='mqttid', default=uuid.uuid4, editable=False)
+    mqtt = models.CharField(max_length=255, db_column='mqttid', unique=True,)
     name = models.CharField(max_length=64, verbose_name='название')
     description = models.CharField(max_length=500, blank=True)
     device_type = models.IntegerField(db_column='type', default=0)
