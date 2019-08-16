@@ -233,7 +233,7 @@ class DepartmentViewSet(_AbstractViewSet):
             organizations_ids = set(
                 map(lambda d: d.get('organization'), result.get('data')))
             result.update(
-                {'organizations': __get_organizations_by_id(organizations_ids)})
+                {'organizations': _get_organizations_by_id(organizations_ids)})
 
         return self._response(result)
 
@@ -518,7 +518,7 @@ class _UserViewSet(_AbstractViewSet):
                 map(lambda d: d.get('organization'), result.get('data')))
 
             result.update(
-                {'organizations': __get_organizations_by_id(organizations_ids)})
+                {'organizations': _get_organizations_by_id(organizations_ids)})
 
         return self._response(result)
 
@@ -908,7 +908,7 @@ def get_report(request):
             organizations_ids = set(
                 employees_queryset.values_list('organization_id', flat=True))
             result.update({
-                'organizations': __get_organizations_by_id(organizations_ids)})
+                'organizations': _get_organizations_by_id(organizations_ids)})
 
     if show_department and (entityId is not None) and (entity_type == 'department'):
         result.update({'department': DepartmentSerializers.ModelSerializer(
@@ -940,7 +940,7 @@ def __get_objects_by_id(serializer, queryset=None, ids=None, clazz=None):
     return result
 
 
-def __get_organizations_by_id(ids):
+def _get_organizations_by_id(ids):
     return __get_objects_by_id(OrganizationSerializers.ModelSerializer, clazz=Organization, ids=ids)
 
 
