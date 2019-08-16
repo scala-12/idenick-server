@@ -1,27 +1,31 @@
+import io
 from abc import abstractmethod
+from datetime import datetime, timedelta
 from enum import Enum
 
-from django.http import FileResponse
-
+import xlsxwriter
 from django.contrib.auth.models import User
 from django.db.models.expressions import Value
 from django.db.models.functions.text import Concat
 from django.db.models.query_utils import Q
+from django.http import FileResponse
+from django.http.request import QueryDict
 from django.shortcuts import get_object_or_404
-from rest_framework import viewsets, status
+from rest_framework import status, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from idenick_app.models import Organization, Department, Employee, Employee2Department, \
-    Login, EmployeeRequest, Device
 import idenick_rest_api_v0
-from idenick_rest_api_v0.serializers import OrganizationSerializers, DepartmentSerializers, \
-    LoginSerializer, UserSerializer, EmployeeSerializers, EmployeeRequestSerializer, \
-    DeviceSerializers
-from django.http.request import QueryDict
-from datetime import datetime, timedelta
-import xlsxwriter
-import io
+from idenick_app.models import (Department, Device, Employee,
+                                Employee2Department, EmployeeRequest, Login,
+                                Organization)
+from idenick_rest_api_v0.serializers import (DepartmentSerializers,
+                                             DeviceSerializers,
+                                             EmployeeRequestSerializer,
+                                             EmployeeSerializers,
+                                             LoginSerializer,
+                                             OrganizationSerializers,
+                                             UserSerializer)
 
 
 class ErrorMessage(Enum):
@@ -228,15 +232,8 @@ class DepartmentViewSet(_AbstractViewSet):
         if (request.GET.__contains__('showorganization')):
             organizations_ids = set(
                 map(lambda d: d.get('organization'), result.get('data')))
-            organizations_queryset = Organization.objects.filter(
-                id__in=organizations_ids)
-            organizations = map(lambda i: OrganizationSerializers.ModelSerializer(
-                i).data, organizations_queryset)
-            organizations_by_id = {}
-            for o in organizations:
-                organizations_by_id.update({o.get('id'): o})
-
-            result.update({'organizations': organizations_by_id})
+            result.update(
+                {'organizations': __get_organizations_by_id(organizations_ids)})
 
         return self._response(result)
 
@@ -519,15 +516,9 @@ class _UserViewSet(_AbstractViewSet):
         if (request.GET.__contains__('showorganization')):
             organizations_ids = set(
                 map(lambda d: d.get('organization'), result.get('data')))
-            organizations_queryset = Organization.objects.filter(
-                id__in=organizations_ids)
-            organizations = map(lambda i: OrganizationSerializers.ModelSerializer(
-                i).data, organizations_queryset)
-            organizations_by_id = {}
-            for o in organizations:
-                organizations_by_id.update({o.get('id'): o})
 
-            result.update({'organizations': organizations_by_id})
+            result.update(
+                {'organizations': __get_organizations_by_id(organizations_ids)})
 
         return self._response(result)
 
@@ -858,6 +849,23 @@ def get_report(request):
         result.update(employees=employees_by_id)
 
     return Response(result)
+
+
+def __get_objects_by_id(serializer, queryset=None, ids=None, clazz=None):
+    if (clazz is not None) and (ids is not None):
+        queryset = clazz.objects.filter(id__in=ids)
+    result = None
+    if queryset is not None:
+        data = map(lambda i: serializer(i).data, queryset)
+        result = {}
+        for o in data:
+            result.update({o.get('id'): o})
+
+    return result
+
+
+def __get_organizations_by_id(ids):
+    return __get_objects_by_id(OrganizationSerializers.ModelSerializer, clazz=Organization, ids=ids)
 
 
 @api_view(['POST'])
