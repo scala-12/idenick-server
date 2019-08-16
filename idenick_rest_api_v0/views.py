@@ -884,7 +884,8 @@ def get_report(request):
     login = Login.objects.get(user=request.user)
 
     show_organization = 'showorganization' in request.GET
-    show_department = request.GET.get('type', None) == 'department'
+    entity_type = ReportType(request.GET.get('type'))
+    show_department = entity_type == ReportType.DEPARTMENT
     show_device = 'showdevice' in request.GET
 
     report_queryset = __get_report(request).get('queryset')
