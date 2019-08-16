@@ -733,34 +733,76 @@ def get_current_user(request):
 def __get_report(request):
     login = Login.objects.get(user=request.user)
 
-    start_date = datetime.strptime(request.GET.get('start'), "%Y%m%d")
-    end_date = datetime.strptime(request.GET.get(
-        'end'), "%Y%m%d") + timedelta(days=1, microseconds=-1)
-    employee_id = request.GET.get('employee', None)
+    entity_id = request.GET.get('id', None)
+    entity_type = request.GET.get('type', None)
 
-    report_type = None
-    result = {}
-    queryset = EmployeeRequest.objects.filter(
-        Q(employee__organization_id=login.organization_id) & Q(moment__range=(start_date, end_date)))
-    if employee_id is None:
-        department_id = request.GET.get('department', None)
-        if department_id is None:
-            report_type = 'by organization ' + login.organization.name
-        else:
-            department_employees = Employee2Department.objects.filter(
-                department_id=department_id)
-            queryset = queryset.filter(
-                employee_id__in=department_employees.values_list('department_id', flat=True))
-            department = Department.objects.get(pk=department_id)
-            result.update(
-                {'department': DepartmentSerializers.ModelSerializer(department).data})
-            report_type = 'by department' + department.name
+    page = request.GET.get('page', None)
+    perPage = request.GET.get('perPage', None)
+
+    start_date = None
+    start_time = request.GET.get('start', None)
+    if start_time is not None:
+        start_date = datetime.strptime(request.GET.get('start'), "%Y%m%d")
+
+    end_date = None
+    end_time = request.GET.get('end', None)
+    if end_time is not None:
+        end_date = datetime.strptime(
+            end_time, "%Y%m%d") + timedelta(days=1, microseconds=-1)
+
+    employees_queryset = Employee.objects.all()
+    if login.role == Login.CONTROLLER:
+        employees_queryset = employees_queryset.filter(
+            organization_id=login.organization_id)
+
+    name = None
+    if (entity_id is not None) and (entity_type is not None):
+        if entity_type == 'employee':
+            employees_queryset = employees_queryset.get(id=entity_id)
+            name = 'employee ' + employees_queryset.get_full_name()
+        elif entity_type == 'department':
+            employees_queryset = employees_queryset.filter(
+                id__in=Employee2Department.objects.filter(
+                    department_id=entity_id)
+                .values_list('employee_id', flat=True))
+            name = 'department ' + Department.objects.get(id=entity_id).name
+        elif entity_type == 'organization':
+            employees_queryset = employees_queryset.filter(
+                organization_id=entity_id)
+            name = 'organization ' + \
+                Organization.objects.get(id=entity_id).name
+        elif entity_type == 'device':
+            employees_queryset = employees_queryset.filter(
+                id__in=EmployeeRequest.objects.filter(
+                    device_id=entity_id)
+                .values_list('employee_id', flat=True))
+            device = Device.objects.get(id=entity_id)
+            name = 'device ' + device.mqtt
     else:
-        queryset = queryset.filter(employee_id=employee_id)
-        employee = Employee.objects.get(id=employee_id)
-        report_type = 'by employee' + employee.get_full_name()
+        name = 'full'
 
-    result.update({'queryset': queryset, 'type': report_type})
+    result = {}
+    report_queryset = EmployeeRequest.objects.filter(
+        employee_id__in=employees_queryset.values_list(
+            'id', flat=True)).order_by('-moment')
+
+    if start_date is not None:
+        report_queryset = report_queryset.filter(moment__gte=start_date)
+    if end_date is not None:
+        report_queryset = report_queryset.filter(moment__lte=end_date)
+    if entity_type == 'device':
+        report_queryset = report_queryset.filter(device_id=entity_id)
+
+    paginated_report_queryset = None
+    if (page is None) or (perPage is None):
+        paginated_report_queryset = report_queryset
+    else:
+        offset = int(page) * int(perPage)
+        limit = offset + int(perPage)
+        paginated_report_queryset = report_queryset[offset:limit]
+
+    result.update(
+        {'queryset': paginated_report_queryset, 'name': name})
 
     return result
 
@@ -788,29 +830,31 @@ def get_report_file(request):
             row, 6, 0 if rl.algorithm_type is None else rl.algorithm_type)
         row += 1
 
-    def get_max_field_lenght_list(f, caption=None): return 4 + max(list(len(str(s))
-                                                                        for s in queryset.distinct().values_list(f, flat=True)) + [0 if caption is None else len(caption)])
+    def get_max_field_lenght_list(f, caption=None):
+        return 4 + max(list(len(str(s)) for s in set(queryset.values_list(f, flat=True)))
+                       + [0 if caption is None else len(caption)])
 
-    max_employee_name_lenght = 4 + max(list(map(lambda e: len(e.get_full_name()), Employee.objects.filter(
-        id__in=queryset.distinct().values_list('employee', flat=True)))) + [len('Сотрудник')])
+    max_employee_name_lenght = 4 + max(list(map(lambda e: len(e.get_full_name()),
+                                                Employee.objects.filter(
+        id__in=set(queryset.values_list('employee', flat=True))))) + [len('Сотрудник')])
     worksheet.write(0, 0, 'Сотрудник')
-    worksheet.set_column(0, 0,  max_employee_name_lenght)
+    worksheet.set_column(0, 0, max_employee_name_lenght)
     worksheet.write(0, 1, 'Устройство')
-    worksheet.set_column(1, 1,  get_max_field_lenght_list(
+    worksheet.set_column(1, 1, get_max_field_lenght_list(
         'device__name', 'Устройство'))
     worksheet.write(0, 2, 'Дата')
-    worksheet.set_column(2, 2,  23)
+    worksheet.set_column(2, 2, 23)
     worksheet.write(0, 3, 'Запрос')
     worksheet.set_column(
-        3, 3,  get_max_field_lenght_list('request_type', 'Запрос'))
+        3, 3, get_max_field_lenght_list('request_type', 'Запрос'))
     worksheet.write(0, 4, 'Ответ')
     worksheet.set_column(
-        4, 4,  get_max_field_lenght_list('response_type', 'Ответ'))
+        4, 4, get_max_field_lenght_list('response_type', 'Ответ'))
     worksheet.write(0, 5, 'Описание')
     worksheet.set_column(
-        5, 5,  get_max_field_lenght_list('description', 'Описание'))
+        5, 5, get_max_field_lenght_list('description', 'Описание'))
     worksheet.write(0, 6, 'Алгоритм')
-    worksheet.set_column(6, 6,  get_max_field_lenght_list(
+    worksheet.set_column(6, 6, get_max_field_lenght_list(
         'algorithm_type', 'Алгоритм'))
 
     workbook.close()
@@ -818,7 +862,7 @@ def get_report_file(request):
     output_file.seek(0)
 
     file_name = 'Report ' + \
-        report_data.get('type') + ' ' + \
+        report_data.get('name') + ' ' + \
         datetime.now().strftime('%Y_%m_%d') + '.xlsx'
 
     response = FileResponse(streaming_content=output_file, as_attachment=True, filename=file_name,
@@ -830,23 +874,47 @@ def get_report_file(request):
 
 @api_view(['GET'])
 def get_report(request):
-    report_data = __get_report(request)
-    result = {'data': EmployeeRequestSerializer(
-        report_data.get('queryset'), many=True).data}
+    login = Login.objects.get(user=request.user)
 
-    if (request.GET.__contains__('full')):
-        report_data.update(organization=OrganizationSerializers.ModelSerializer(
-            Organization.objects.get(pk=login.organization_id)).data)
+    show_organization = 'showorganization' in request.GET
+    show_department = request.GET.get('type', None) == 'department'
+    show_device = 'showdevice' in request.GET
 
-        employees_ids = report_data.get('employees')
-        employees_queryset = Employee.objects.filter(id__in=employees_ids)
-        employees = map(lambda i: EmployeeSerializers.ModelSerializer(
-            i).data, employees_queryset)
-        employees_by_id = {}
-        for o in employees:
-            employees_by_id.update({o.get('id'): o})
+    report_queryset = __get_report(request).get('queryset')
 
-        result.update(employees=employees_by_id)
+    result = {}
+
+    employees_ids = set(report_queryset.values_list('employee_id', flat=True))
+    employees_queryset = Employee.objects.filter(
+        id__in=employees_ids)
+
+    result.update(employees=__get_objects_by_id(
+        EmployeeSerializers.ModelSerializer, queryset=employees_queryset))
+
+    if show_organization:
+        if login.role == Login.CONTROLLER:
+            result.update(organizations={
+                login.organization_id: OrganizationSerializers.ModelSerializer(
+                    Organization.objects.get(pk=login.organization_id)).data})
+        elif login.role == Login.ADMIN:
+            organizations_ids = set(
+                employees_queryset.values_list('organization_id', flat=True))
+            result.update({
+                'organizations': __get_organizations_by_id(organizations_ids)})
+
+    if show_department and (entityId is not None) and (entity_type == 'department'):
+        result.update({'department': DepartmentSerializers.ModelSerializer(
+            Department.objects.get(entity_id)).data})
+
+    if show_device:
+        devices_ids = set(report_queryset.values_list('device_id', flat=True))
+        result.update(devices=__get_objects_by_id(
+            DeviceSerializers.ModelSerializer, clazz=Device, ids=devices_ids))
+
+    result.update(count=report_queryset.count())
+
+    result.update(data=EmployeeRequestSerializer(
+        report_queryset, many=True).data)
 
     return Response(result)
 
