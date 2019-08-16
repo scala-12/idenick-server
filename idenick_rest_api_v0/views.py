@@ -730,11 +730,19 @@ def get_current_user(request):
     return Response({'data': response})
 
 
+class ReportType(Enum):
+    EMPLOYEE = 'EMPLOYEE'
+    DEPARTMENT = 'DEPARTMENT'
+    ORGANIZATION = 'ORGANIZATION'
+    DEVICE = 'DEVICE'
+    ALL = 'ALL'
+
+
 def __get_report(request):
     login = Login.objects.get(user=request.user)
 
     entity_id = request.GET.get('id', None)
-    entity_type = request.GET.get('type', None)
+    entity_type = ReportType(request.GET.get('type'))
 
     page = request.GET.get('page', None)
     perPage = request.GET.get('perPage', None)
@@ -756,35 +764,34 @@ def __get_report(request):
             organization_id=login.organization_id)
 
     name = None
-    if (entity_id is not None) and (entity_type is not None):
-        if entity_type == 'employee':
-            employees_queryset = employees_queryset.get(id=entity_id)
-            name = 'employee ' + employees_queryset.get_full_name()
-        elif entity_type == 'department':
-            employees_queryset = employees_queryset.filter(
-                id__in=Employee2Department.objects.filter(
-                    department_id=entity_id)
-                .values_list('employee_id', flat=True))
+    employees_ids = None
+    if (entity_id is not None):
+        if entity_type == ReportType.EMPLOYEE:
+            employees_ids = {entity_id}
+            name = 'employee ' + employees_queryset[0].get_full_name()
+        elif entity_type == ReportType.DEPARTMENT:
+            employees_ids = Employee2Department.objects.filter(
+                department_id=entity_id).values_list('employee_id', flat=True)
             name = 'department ' + Department.objects.get(id=entity_id).name
-        elif entity_type == 'organization':
+        elif entity_type == ReportType.ORGANIZATION:
             employees_queryset = employees_queryset.filter(
                 organization_id=entity_id)
             name = 'organization ' + \
                 Organization.objects.get(id=entity_id).name
-        elif entity_type == 'device':
-            employees_queryset = employees_queryset.filter(
-                id__in=EmployeeRequest.objects.filter(
-                    device_id=entity_id)
-                .values_list('employee_id', flat=True))
+        elif entity_type == ReportType.DEVICE:
+            employees_ids = EmployeeRequest.objects.filter(
+                device_id=entity_id).values_list('employee_id', flat=True)
             device = Device.objects.get(id=entity_id)
             name = 'device ' + device.mqtt
     else:
         name = 'full'
 
+    if employees_ids is None:
+        employees_ids = set(employees_queryset.values_list('id', flat=True))
+
     result = {}
     report_queryset = EmployeeRequest.objects.filter(
-        employee_id__in=employees_queryset.values_list(
-            'id', flat=True)).order_by('-moment')
+        employee_id__in=set(employees_ids)).order_by('-moment')
 
     if start_date is not None:
         report_queryset = report_queryset.filter(moment__gte=start_date)
