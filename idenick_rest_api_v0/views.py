@@ -769,21 +769,22 @@ def __get_report(request):
     if (entity_id is not None):
         if entity_type == ReportType.EMPLOYEE:
             employees_ids = {entity_id}
-            name = 'employee ' + employees_queryset[0].get_full_name()
+            name = 'employee '
         elif entity_type == ReportType.DEPARTMENT:
             employees_ids = Employee.objects.filter(id__in=Employee2Department.objects.filter(
                 department_id=entity_id).values_list('employee_id', flat=True))
-            name = 'department ' + Department.objects.get(id=entity_id).name
+            name = 'department '
         elif entity_type == ReportType.ORGANIZATION:
             employees_queryset = employees_queryset.filter(
                 organization_id=entity_id)
-            name = 'organization ' + \
-                Organization.objects.get(id=entity_id).name
+            name = 'organization '
         elif entity_type == ReportType.DEVICE:
             employees_ids = EmployeeRequest.objects.filter(
                 device_id=entity_id).values_list('employee_id', flat=True)
             device = Device.objects.get(id=entity_id)
-            name = 'device ' + device.mqtt
+            name = 'device '
+
+        name += entity_id
     else:
         name = 'full'
 
@@ -818,52 +819,61 @@ def __get_report(request):
 @api_view(['GET'])
 def get_report_file(request):
     report_data = __get_report(request)
+    queryset = report_data.get('queryset')
 
     output_file = io.BytesIO()
     workbook = xlsxwriter.Workbook(output_file, {'in_memory': True})
     worksheet = workbook.add_worksheet()
 
-    queryset = report_data.get('queryset')
     row = 1
     for rl in queryset:
-        worksheet.write(row, 0, rl.employee.get_full_name())
-        worksheet.write(row, 1, rl.device.name)
-        worksheet.write(row, 2, rl.moment.strftime('%Y-%m-%d %H:%M:%S'))
-        worksheet.write(
-            row, 3, 0 if rl.request_type is None else rl.request_type)
-        worksheet.write(
-            row, 4, 0 if rl.response_type is None else rl.response_type)
-        worksheet.write(row, 5, rl.description)
-        worksheet.write(
-            row, 6, 0 if rl.algorithm_type is None else rl.algorithm_type)
+        fields = [
+            rl.employee.organization.name,
+            rl.employee.get_full_name(),
+            rl.device.name,
+            rl.device.mqtt,
+            rl.moment.strftime('%Y-%m-%d %H:%M:%S'),
+            0 if rl.request_type is None else rl.request_type,
+            0 if rl.response_type is None else rl.response_type,
+            rl.description,
+            0 if rl.algorithm_type is None else rl.algorithm_type,
+        ]
+        col = 0
+        for f in fields:
+            worksheet.write(row, col, f)
+            col += 1
         row += 1
 
     def get_max_field_lenght_list(f, caption=None):
         return 4 + max(list(len(str(s)) for s in set(queryset.values_list(f, flat=True)))
                        + [0 if caption is None else len(caption)])
-
     max_employee_name_lenght = 4 + max(list(map(lambda e: len(e.get_full_name()),
                                                 Employee.objects.filter(
         id__in=set(queryset.values_list('employee', flat=True))))) + [len('Сотрудник')])
-    worksheet.write(0, 0, 'Сотрудник')
-    worksheet.set_column(0, 0, max_employee_name_lenght)
-    worksheet.write(0, 1, 'Устройство')
-    worksheet.set_column(1, 1, get_max_field_lenght_list(
-        'device__name', 'Устройство'))
-    worksheet.write(0, 2, 'Дата')
-    worksheet.set_column(2, 2, 23)
-    worksheet.write(0, 3, 'Запрос')
-    worksheet.set_column(
-        3, 3, get_max_field_lenght_list('request_type', 'Запрос'))
-    worksheet.write(0, 4, 'Ответ')
-    worksheet.set_column(
-        4, 4, get_max_field_lenght_list('response_type', 'Ответ'))
-    worksheet.write(0, 5, 'Описание')
-    worksheet.set_column(
-        5, 5, get_max_field_lenght_list('description', 'Описание'))
-    worksheet.write(0, 6, 'Алгоритм')
-    worksheet.set_column(6, 6, get_max_field_lenght_list(
-        'algorithm_type', 'Алгоритм'))
+
+    fields = [
+        {'name': 'Организация', 'length': get_max_field_lenght_list(
+            'employee__organization__name', 'Организация')},
+        {'name': 'Сотрудник', 'length': max_employee_name_lenght},
+        {'name': 'Устройство', 'length': get_max_field_lenght_list(
+            'device__name', 'Устройство')},
+        {'name': 'ИД устройства', 'length': get_max_field_lenght_list(
+            'device__mqtt', 'ИД устройства')},
+        {'name': 'Дата', 'length': 23},
+        {'name': 'Запрос', 'length': get_max_field_lenght_list(
+            'request_type', 'Запрос')},
+        {'name': 'Ответ', 'length': get_max_field_lenght_list(
+            'response_type', 'Ответ')},
+        {'name': 'Описание', 'length': get_max_field_lenght_list(
+            'description', 'Описание')},
+        {'name': 'Алгоритм', 'length': get_max_field_lenght_list(
+            'algorithm_type', 'Алгоритм')},
+    ]
+    i = 0
+    for f in fields:
+        worksheet.write(0, i, f.get('name'))
+        worksheet.set_column(i, i, f.get('length'))
+        i += 1
 
     workbook.close()
 
