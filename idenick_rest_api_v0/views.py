@@ -744,7 +744,8 @@ def __get_report(request):
     entity_id = request.GET.get('id', None)
     entity_type = ReportType(request.GET.get('type'))
 
-    page = request.GET.get('page', None)
+    page = request.GET.get('from', None)
+    page_count = request.GET.get('count', 1)
     perPage = request.GET.get('perPage', None)
 
     start_date = None
@@ -770,8 +771,8 @@ def __get_report(request):
             employees_ids = {entity_id}
             name = 'employee ' + employees_queryset[0].get_full_name()
         elif entity_type == ReportType.DEPARTMENT:
-            employees_ids = Employee2Department.objects.filter(
-                department_id=entity_id).values_list('employee_id', flat=True)
+            employees_ids = Employee.objects.filter(id__in=Employee2Department.objects.filter(
+                department_id=entity_id).values_list('employee_id', flat=True))
             name = 'department ' + Department.objects.get(id=entity_id).name
         elif entity_type == ReportType.ORGANIZATION:
             employees_queryset = employees_queryset.filter(
@@ -805,7 +806,7 @@ def __get_report(request):
         paginated_report_queryset = report_queryset
     else:
         offset = int(page) * int(perPage)
-        limit = offset + int(perPage)
+        limit = offset + int(perPage) * page_count
         paginated_report_queryset = report_queryset[offset:limit]
 
     result.update(
@@ -884,8 +885,10 @@ def get_report(request):
     login = Login.objects.get(user=request.user)
 
     show_organization = 'showorganization' in request.GET
+    entity_id = request.GET.get('id', None)
     entity_type = ReportType(request.GET.get('type'))
-    show_department = entity_type == ReportType.DEPARTMENT
+    show_department = (entity_type == ReportType.DEPARTMENT) and (
+        entity_id is not None)
     show_device = 'showdevice' in request.GET
 
     report_queryset = __get_report(request).get('queryset')
@@ -910,9 +913,9 @@ def get_report(request):
             result.update({
                 'organizations': _get_organizations_by_id(organizations_ids)})
 
-    if show_department and (entityId is not None) and (entity_type == 'department'):
+    if show_department:
         result.update({'department': DepartmentSerializers.ModelSerializer(
-            Department.objects.get(entity_id)).data})
+            Department.objects.get(id=entity_id)).data})
 
     if show_device:
         devices_ids = set(report_queryset.values_list('device_id', flat=True))
