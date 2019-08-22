@@ -807,7 +807,7 @@ def __get_report(request):
         paginated_report_queryset = report_queryset
     else:
         offset = int(page) * int(perPage)
-        limit = offset + int(perPage) * page_count
+        limit = offset + int(perPage) * int(page_count)
         paginated_report_queryset = report_queryset[offset:limit]
 
     result.update(
