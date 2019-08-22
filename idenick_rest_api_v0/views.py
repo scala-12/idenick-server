@@ -812,6 +812,7 @@ def __get_report(request):
 
     result.update(
         {'queryset': paginated_report_queryset, 'name': name})
+    result.update(count=report_queryset.count())
 
     return result
 
@@ -901,7 +902,8 @@ def get_report(request):
         entity_id is not None)
     show_device = 'showdevice' in request.GET
 
-    report_queryset = __get_report(request).get('queryset')
+    report_data = __get_report(request)
+    report_queryset = report_data.get('queryset')
 
     result = {}
 
@@ -932,7 +934,7 @@ def get_report(request):
         result.update(devices=__get_objects_by_id(
             DeviceSerializers.ModelSerializer, clazz=Device, ids=devices_ids))
 
-    result.update(count=report_queryset.count())
+    result.update(count=report_data.get('count'))
 
     result.update(data=EmployeeRequestSerializer(
         report_queryset, many=True).data)
