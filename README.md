@@ -28,7 +28,12 @@
 1. Удалить папку *static*
 1. В react-проекте выполнить `npm run build`
 1. Выполнить `python manage.py collectstatic`
-1. Скопировать папки *idenick_app*, *idenick_project*, *idenick_rest_api_v0*, *static* на сервер
+1. Скопировать на сервер
+- *idenick_app*
+- *idenick_project*
+- *idenick_rest_api_v0*
+- *static*
+- *manage.py*
 
 ## Запуск
 1. Команда `python manage.py runserver`
