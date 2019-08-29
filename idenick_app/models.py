@@ -46,8 +46,8 @@ class Employee(_AbstractEntry4Old):
     organization = models.ForeignKey(
         'Organization', related_name='employees', null=True, default=None,
         on_delete=models.SET_NULL)
-    guid = models.UUIDField(
-        db_column='userid', default=uuid.uuid4, editable=False)
+    guid = models.CharField(max_length=50, unique=True,
+                            db_column='userid', default=uuid.uuid4)
     last_name = models.CharField(db_column='surname', max_length=64)
     first_name = models.CharField(db_column='firstname', max_length=64)
     patronymic = models.CharField(max_length=64)
@@ -65,7 +65,7 @@ class Employee(_AbstractEntry4Old):
 
 class Organization(_AbstractEntry4Old):
     """Organization model"""
-    guid = models.UUIDField(db_column='companyid',
+    guid = models.CharField(max_length=50, unique=True, db_column='companyid',
                             default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=250, unique=True,
                             verbose_name='название')
@@ -199,21 +199,23 @@ class DeviceGroup(_AbstractEntry4Old):
         db_table = 'devicegroup'
 
 
-class EmployeeRequest(_AbstractEntry4Old):
+class EmployeeRequest(models.Model):
     """Employee request model"""
+    id = models.AutoField(primary_key=True)
     moment = models.DateTimeField(db_column='stamp', auto_now_add=True)
     request_type = models.IntegerField(db_column='request', default=0)
     response_type = models.IntegerField(db_column='result', default=0)
     description = models.CharField(max_length=500, blank=True)
     algorithm_type = models.IntegerField(db_column='algorithm', default=0)
     employee = models.ForeignKey(
-        'Employee', db_column='userid', on_delete=models.CASCADE)
+        'Employee', db_column='usersid', on_delete=models.CASCADE, null=True, default=None)
     device = models.ForeignKey(
-        'Device', db_column='deviceid', on_delete=models.CASCADE)
+        'Device', db_column='devicesid', on_delete=models.CASCADE, null=True, default=None)
+    templatesid = models.IntegerField(default=0)
 
     def __str__(self):
-        return self._str() + ('[%s] with [%s] in [%s] do [%s] with result [%s] (%s)'
-                              % (self.employee, self.device, self.moment, self.request_type,
+        return ('id[%s] [%s] with [%s] in [%s] do [%s] with result [%s] (%s)'
+                              % (self.id, self.employee, self.device, self.moment, self.request_type,
                                  self.response_type, self.description))
 
     class Meta:
