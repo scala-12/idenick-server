@@ -229,7 +229,7 @@ class DepartmentViewSet(_AbstractViewSet):
 
         result = self._list_data(request, queryset)
 
-        if (request.GET.__contains__('showorganization')):
+        if (request.GET.__contains__('full')):
             organizations_ids = set(
                 map(lambda d: d.get('organization'), result.get('data')))
             result.update(
@@ -240,7 +240,7 @@ class DepartmentViewSet(_AbstractViewSet):
     def retrieve(self, request, pk=None):
         result = self._retrieve_data(request, pk)
 
-        if (request.GET.__contains__('showorganization')):
+        if (request.GET.__contains__('full')):
             result.update({'organization': OrganizationSerializers.ModelSerializer(
                 Organization.objects.get(id=result.get('data',).get('organization'))).data})
 
@@ -352,9 +352,10 @@ class EmployeeSets:
 
             return result
 
+        # TODO: check it
         def _withExtra(self, request, department_id=None):
             result = {}
-            if (request.GET.__contains__('showorganization')):
+            if (request.GET.__contains__('full')):
                 login = Login.objects.get(user=request.user)
                 organization = OrganizationSerializers.ModelSerializer(
                     login.organization).data
@@ -386,7 +387,7 @@ class EmployeeSets:
 
             employee_full = EmployeeSerializers.FullModelSerializer(
                 Employee.objects.get(pk=result.get('data').get('id'))).data
-            if (request.GET.__contains__('showdepartments')):
+            if (request.GET.__contains__('full')):
                 result.update({'departments': map(lambda i: i.get(
                     'department'), employee_full.get('departments'))})
 
@@ -488,19 +489,23 @@ class _UserViewSet(_AbstractViewSet):
         return Login.REGISTRATOR if (Login.objects.get(user=request.user).role == Login.ADMIN) \
             else Login.CONTROLLER
 
-    def _get_queryset(self, request, organization_id=None):
+    def _get_queryset(self, request):
         result = Login.objects.filter(role=self._user_role(request))
-        if (organization_id is None):
-            login = Login.objects.get(user=request.user)
-            if (login.role == Login.REGISTRATOR):
-                result = result.filter(organization__id=login.organization_id)
-        else:
+        login = Login.objects.get(user=request.user)
+        if login.role == Login.REGISTRATOR:
+            result = result.filter(organization__id=login.organization_id)
+
+        organization_filter = request.GET.get('organization', None)
+        organization_id = (
+            None if organization_filter is None else int(organization_filter))
+        if organization_id is not None:
             result = result.filter(organization__id=organization_id)
 
         return result
 
-    def list(self, request, organization_id=None):
-        queryset = self._get_queryset(request, organization_id=organization_id)
+    def list(self, request):
+        queryset = self._get_queryset(
+            request)
         name_filter = request.GET.get('name', None)
         users_ids = None
         if (name_filter is not None) and (name_filter != ''):
@@ -513,7 +518,7 @@ class _UserViewSet(_AbstractViewSet):
 
         result = self._list_data(request, queryset)
 
-        if (request.GET.__contains__('showorganization')):
+        if (request.GET.__contains__('full')):
             organizations_ids = set(
                 map(lambda d: d.get('organization'), result.get('data')))
 
@@ -523,20 +528,26 @@ class _UserViewSet(_AbstractViewSet):
         return self._response(result)
 
     def _retrieve_user(self, request, pk=None):
-        result = self._retrieve_data(request=request, pk=pk, queryset=self._get_queryset(
-            request, organization_id=None))
-        if (request.GET.__contains__('showorganization')):
+        result = self._retrieve_data(request=request, pk=pk, queryset=self._get_queryset(request))
+        if (request.GET.__contains__('full')):
             result.update({'organization': OrganizationSerializers.ModelSerializer(
                 Organization.objects.get(id=result.get('data').get('organization'))).data})
 
         return self._response(result)
 
-    def _create(self, request, organization_id):
+    def _create(self, request):
         serializer_class = self.get_serializer_class()
         serializer = serializer_class(data=request.data)
         result = None
 
         if serializer.is_valid():
+            current_user = Login.objects.get(user=request.user)
+            organization_id = None
+            if current_user.role == Login.REGISTRATOR:
+                organization_id = current_user.organization_id
+            elif current_user.role == Login.ADMIN:
+                organization_id = int(request.data.get('organization'))
+
             user_data = User(**serializer.data)
             if user_data.username and user_data.password:
                 user = User.objects.create_user(
@@ -591,27 +602,21 @@ class UserViewSet(_UserViewSet):
 # for admin
 
 
-class RegistratorViews:
+class RegistratorViewSet(_UserViewSet):
+    def create(self, request):
+        return self._create(request)
 
-    class ByOrganizationViewSet(_UserViewSet):
+    def retrieve(self, request, pk=None):
+        return self._retrieve_user(request, pk=pk)
 
-        def create(self, request, organization_id):
-            return self._create(request, organization_id)
-
-    class SimpleViewSet(_UserViewSet):
-
-        def retrieve(self, request, pk=None):
-            return self._retrieve_user(request, pk=pk)
-
-        def partial_update(self, request, pk=None):
-            return self._partial_update(request, pk)
+    def partial_update(self, request, pk=None):
+        return self._partial_update(request, pk)
 
 
 # for registrator
 class ControllerViewSet(_UserViewSet):
-
     def create(self, request):
-        return self._create(request, Login.objects.get(user=request.user).organization_id)
+        return self._create(request)
 
     def retrieve(self, request, pk=None):
         return self._retrieve_user(request, pk)
@@ -646,7 +651,7 @@ class DeviceViewSet(_AbstractViewSet):
     def retrieve(self, request, pk=None):
         result = self._retrieve_data(request, pk)
 
-        if (request.GET.__contains__('showorganization')):
+        if (request.GET.__contains__('full')):
             result.update({'organization': OrganizationSerializers.ModelSerializer(
                 Organization.objects.get(id=result.get('data',).get('organization'))).data})
 
