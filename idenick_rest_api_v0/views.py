@@ -137,8 +137,8 @@ class OrganizationViewSet(_AbstractViewSet):
 
     def list(self, request):
         queryset = self._get_queryset(request)
-        name_filter = request.GET.get('name', None)
-        if (name_filter is not None) and (name_filter != ''):
+        name_filter = _get_request_param(request, 'name')
+        if name_filter is not None:
             queryset = queryset.filter(name__icontains=name_filter)
 
         result = self._list_data(request, queryset)
@@ -218,18 +218,18 @@ class DepartmentViewSet(_AbstractViewSet):
 
     def list(self, request):
         queryset = self._get_queryset(request)
-        name_filter = request.GET.get('name', None)
-        if (name_filter is not None) and (name_filter != ''):
+        name_filter = _get_request_param(request, 'name')
+        if name_filter is not None:
             queryset = queryset.filter(name__icontains=name_filter)
 
-        employee_filter = request.GET.get('employee', None)
-        if (employee_filter is not None) and (employee_filter != ''):
+        employee_filter = _get_request_param(request, 'employee', True)
+        if employee_filter is not None:
             queryset = queryset.filter(id__in=Employee2Department.objects.filter(
-                employee_id=int(employee_filter)).values_list('department_id', flat=True))
+                employee_id=employee_filter).values_list('department_id', flat=True))
 
         result = self._list_data(request, queryset)
 
-        if (request.GET.__contains__('full')):
+        if 'full' in request.GET:
             organizations_ids = set(
                 map(lambda d: d.get('organization'), result.get('data')))
             result.update(
@@ -240,7 +240,7 @@ class DepartmentViewSet(_AbstractViewSet):
     def retrieve(self, request, pk=None):
         result = self._retrieve_data(request, pk)
 
-        if (request.GET.__contains__('full')):
+        if 'full' in request.GET:
             result.update({'organization': OrganizationSerializers.ModelSerializer(
                 Organization.objects.get(id=result.get('data',).get('organization'))).data})
 
@@ -320,11 +320,7 @@ class EmployeeViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request):
         login = Login.objects.get(user=request.user)
-        department_filter = request.GET.get('department', None)
-        if (department_filter is not None) and (department_filter != ''):
-            department_filter = int(department_filter)
-        else:
-            department_filter = None
+        department_filter = _get_request_param(request, 'department', True)
 
         result = None
         if (login.role == Login.CONTROLLER):
@@ -353,7 +349,7 @@ class EmployeeViewSet(_AbstractViewSet):
     # TODO: check it
     def _withExtra(self, request, department_id=None):
         result = {}
-        if (request.GET.__contains__('full')):
+        if 'full' in request.GET:
             login = Login.objects.get(user=request.user)
             organization = OrganizationSerializers.ModelSerializer(
                 login.organization).data
@@ -368,8 +364,8 @@ class EmployeeViewSet(_AbstractViewSet):
     def list(self, request):
         queryset = self._get_queryset(request)
 
-        name_filter = request.GET.get('name', None)
-        if (name_filter is not None) and (name_filter != ''):
+        name_filter = _get_request_param(request, 'name')
+        if name_filter is not None:
             queryset = queryset.annotate(
                 full_name=Concat('last_name', Value(
                     ' '), 'first_name', Value(' '), 'patronymic'),
@@ -380,11 +376,7 @@ class EmployeeViewSet(_AbstractViewSet):
 
         result = self._list_data(request, queryset)
 
-        department_filter = request.GET.get('department', None)
-        if (department_filter is not None) and (department_filter != ''):
-            department_filter = int(department_filter)
-        else:
-            department_filter = None
+        department_filter = _get_request_param(request, 'department', True)
         result.update(self._withExtra(request, department_filter))
 
         return self._response(result)
@@ -392,16 +384,12 @@ class EmployeeViewSet(_AbstractViewSet):
     def retrieve(self, request, pk):
         result = self._retrieve_data(
             request, pk, self._get_queryset(request))
-        department_filter = request.GET.get('department', None)
-        if (department_filter is not None) and (department_filter != ''):
-            department_filter = int(department_filter)
-        else:
-            department_filter = None
+        department_filter = _get_request_param(request, 'department', True)
         result.update(self._withExtra(request, department_filter))
 
         employee_full = EmployeeSerializers.FullModelSerializer(
             Employee.objects.get(pk=result.get('data').get('id'))).data
-        if (request.GET.__contains__('full')):
+        if 'full' in request.GET:
             result.update({'departments': map(lambda i: i.get(
                 'department'), employee_full.get('departments'))})
 
@@ -486,20 +474,19 @@ class _UserViewSet(_AbstractViewSet):
         if login.role == Login.REGISTRATOR:
             result = result.filter(organization__id=login.organization_id)
 
-        organization_filter = request.GET.get('organization', None)
-        organization_id = (
-            None if organization_filter is None else int(organization_filter))
-        if organization_id is not None:
-            result = result.filter(organization__id=organization_id)
+        organization_filter = _get_request_param(
+            request, 'organization', True)
+        if organization_filter is not None:
+            result = result.filter(organization__id=organization_filter)
 
         return result
 
     def list(self, request):
         queryset = self._get_queryset(
             request)
-        name_filter = request.GET.get('name', None)
+        name_filter = _get_request_param(request, 'name')
         users_ids = None
-        if (name_filter is not None) and (name_filter != ''):
+        if name_filter is not None:
             users_ids = set(map(lambda i: UserSerializer(i).data.get('id'), User.objects.annotate(
                 full_name_1=Concat('last_name', Value(' '), 'first_name'),
                 full_name_2=Concat('first_name', Value(' '), 'last_name'),
@@ -509,7 +496,7 @@ class _UserViewSet(_AbstractViewSet):
 
         result = self._list_data(request, queryset)
 
-        if (request.GET.__contains__('full')):
+        if 'full' in request.GET:
             organizations_ids = set(
                 map(lambda d: d.get('organization'), result.get('data')))
 
@@ -521,7 +508,7 @@ class _UserViewSet(_AbstractViewSet):
     def _retrieve_user(self, request, pk=None):
         result = self._retrieve_data(
             request=request, pk=pk, queryset=self._get_queryset(request))
-        if (request.GET.__contains__('full')):
+        if 'full' in request.GET:
             result.update({'organization': OrganizationSerializers.ModelSerializer(
                 Organization.objects.get(id=result.get('data').get('organization'))).data})
 
@@ -631,8 +618,8 @@ class DeviceViewSet(_AbstractViewSet):
 
     def list(self, request):
         queryset = self._get_queryset(request)
-        name_filter = request.GET.get('name', None)
-        if (name_filter is not None) and (name_filter != ''):
+        name_filter = _get_request_param(request, 'name')
+        if name_filter is not None:
             queryset = queryset.filter(
                 Q(name__icontains=name_filter) | Q(mqtt__icontains=name_filter))
 
@@ -643,7 +630,7 @@ class DeviceViewSet(_AbstractViewSet):
     def retrieve(self, request, pk=None):
         result = self._retrieve_data(request, pk)
 
-        if (request.GET.__contains__('full')):
+        if 'full' in request.GET:
             result.update({'organization': OrganizationSerializers.ModelSerializer(
                 Organization.objects.get(id=result.get('data',).get('organization'))).data})
 
@@ -713,6 +700,22 @@ class DeviceViewSet(_AbstractViewSet):
                                'data': self._serializer_classes.get('retrieve')(device).data})
 
 
+def _get_request_param(request, name, is_int=False, default=None):
+    param = request.GET.get(name, default)
+
+    result = None
+    if (param is not None) and (param != ''):
+        if is_int:
+            try:
+                result = int(param)
+            except ValueError:
+                pass
+        else:
+            result = param
+
+    return result
+
+
 @api_view(['GET'])
 def get_current_user(request):
     user = request.user
@@ -738,20 +741,20 @@ class ReportType(Enum):
 def __get_report(request):
     login = Login.objects.get(user=request.user)
 
-    entity_id = request.GET.get('id', None)
-    entity_type = ReportType(request.GET.get('type'))
+    entity_id = _get_request_param(request, 'id', True)
+    entity_type = ReportType(_get_request_param(request, 'type'))
 
-    page = request.GET.get('from', None)
-    page_count = request.GET.get('count', 1)
-    perPage = request.GET.get('perPage', None)
+    page = _get_request_param(request, 'from', True)
+    page_count = _get_request_param(request, 'count', True, 1)
+    perPage = _get_request_param(request, 'perPage', True)
 
     start_date = None
-    start_time = request.GET.get('start', None)
+    start_time = _get_request_param(request, 'start')
     if start_time is not None:
-        start_date = datetime.strptime(request.GET.get('start'), "%Y%m%d")
+        start_date = datetime.strptime(start_time, "%Y%m%d")
 
     end_date = None
-    end_time = request.GET.get('end', None)
+    end_time = _get_request_param(request, 'end')
     if end_time is not None:
         end_date = datetime.strptime(
             end_time, "%Y%m%d") + timedelta(days=1, microseconds=-1)
@@ -893,8 +896,8 @@ def get_report(request):
     login = Login.objects.get(user=request.user)
 
     show_organization = 'showorganization' in request.GET
-    entity_id = request.GET.get('id', None)
-    entity_type = ReportType(request.GET.get('type'))
+    entity_id = _get_request_param(request, 'id', True)
+    entity_type = ReportType(_get_request_param(request, 'type'))
     show_department = (entity_type == ReportType.DEPARTMENT) and (
         entity_id is not None)
     show_device = 'showdevice' in request.GET
