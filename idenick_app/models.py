@@ -187,7 +187,8 @@ class Device(_AbstractEntry4Old):
 
 class DeviceGroup(_AbstractEntry4Old):
     """Device group model"""
-    name = models.CharField(max_length=64)
+    name = models.CharField(max_length=64, unique=True,
+                            verbose_name='название проходной', )
     rights = models.IntegerField(default=0)
     description = models.CharField(max_length=500, blank=True)
 
@@ -197,6 +198,36 @@ class DeviceGroup(_AbstractEntry4Old):
 
     class Meta:
         db_table = 'devicegroup'
+        verbose_name_plural = 'Проходные'
+        verbose_name = 'Проходная'
+
+
+class DeviceGroup2Organization(_AbstractEntry4Old):
+    """Model of relation between device group and organization"""
+    device_group = models.ForeignKey(
+        'DeviceGroup', db_column='devicegroupsid', related_name='organizations', on_delete=models.CASCADE)
+    organization = models.ForeignKey(
+        'Organization', db_column='organizationsid', related_name='device_groups', on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self._str() + ('[%s] in [%s]' % (self.device_group, self.organization))
+
+    class Meta:
+        unique_together = (('device_group', 'organization'),)
+
+
+class Device2DeviceGroup(_AbstractEntry4Old):
+    """Model of relation between device and device group"""
+    device_group = models.ForeignKey(
+        'DeviceGroup', db_column='devicegroupsid', related_name='devices', on_delete=models.CASCADE)
+    device = models.ForeignKey(
+        'Device', db_column='devicesid', related_name='device_groups', on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self._str() + ('[%s] in [%s]' % (self.device, self.device_group))
+
+    class Meta:
+        unique_together = (('device', 'device_group'),)
 
 
 class EmployeeRequest(models.Model):
@@ -215,8 +246,8 @@ class EmployeeRequest(models.Model):
 
     def __str__(self):
         return ('id[%s] [%s] with [%s] in [%s] do [%s] with result [%s] (%s)'
-                              % (self.id, self.employee, self.device, self.moment, self.request_type,
-                                 self.response_type, self.description))
+                % (self.id, self.employee, self.device, self.moment, self.request_type,
+                   self.response_type, self.description))
 
     class Meta:
         db_table = 'querylog'

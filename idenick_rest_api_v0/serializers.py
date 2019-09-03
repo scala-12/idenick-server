@@ -1,10 +1,11 @@
 """Serializers for models"""
 from django.contrib.auth.models import User
+from django.http.request import QueryDict
 from rest_framework import serializers
 
-from idenick_app.models import Organization, Department, Employee, Login, \
-    Employee2Department, EmployeeRequest, Device
-from django.http.request import QueryDict
+from idenick_app.models import (Department, Device, DeviceGroup, Employee,
+                                Employee2Department, EmployeeRequest, Login,
+                                Organization)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -49,7 +50,7 @@ class OrganizationSerializers:
 
         def get_employees_count(self, obj):
             return Employee.objects.filter(organization=obj).count()
-        
+
         def get_devices_count(self, obj):
             return Device.objects.filter(organization=obj).count()
 
@@ -282,4 +283,41 @@ class DeviceSerializers:
                 'organization',
                 'device_type',
                 'config',
+            ]
+
+
+class DeviceGroupSerializers:
+    """Serializers for device-model"""
+    class CreateSerializer(serializers.ModelSerializer):
+        """Serializer for create device-model"""
+        class Meta:
+            model = DeviceGroup
+            fields = [
+                'name',
+                'rights',
+                'description',
+            ]
+
+        def to_representation(self, obj):
+            represent = QueryDict('', mutable=True)
+            represent.update(obj)
+            rights = obj.get('rights', '')
+            if not(isinstance(obj.get('rights'), int)):
+                represent.__setitem__('rights', 0 if (
+                    rights == '') else int(rights))
+
+            return represent
+
+    class ModelSerializer(serializers.ModelSerializer):
+        """Serializer for show device-model"""
+
+        class Meta:
+            model = DeviceGroup
+            fields = [
+                'id',
+                'created_at',
+                'dropped_at',
+                'name',
+                'rights',
+                'description',
             ]

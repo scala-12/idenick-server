@@ -16,10 +16,12 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 import idenick_rest_api_v0
-from idenick_app.models import (Department, Device, Employee,
-                                Employee2Department, EmployeeRequest, Login,
-                                Organization)
+from idenick_app.models import (
+    Department, Device, Device2DeviceGroup, DeviceGroup,
+    DeviceGroup2Organization, Employee, Employee2Department, EmployeeRequest,
+    Login, Organization)
 from idenick_rest_api_v0.serializers import (DepartmentSerializers,
+                                             DeviceGroupSerializers,
                                              DeviceSerializers,
                                              EmployeeRequestSerializer,
                                              EmployeeSerializers,
@@ -140,6 +142,12 @@ class OrganizationViewSet(_AbstractViewSet):
         name_filter = _get_request_param(request, 'name')
         if name_filter is not None:
             queryset = queryset.filter(name__icontains=name_filter)
+        device_group_filter = _get_request_param(request, 'deviceGroup', True)
+        if device_group_filter is not None:
+            organization_id_list = queryset.values_list('id', flat=True)
+            queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
+                organization_id__in=organization_id_list).filter(
+                device_group_id=device_group_filter).values_list('organization', flat=True))
 
         result = self._list_data(request, queryset)
 
@@ -614,7 +622,11 @@ class DeviceViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request):
         login = Login.objects.get(user=request.user)
-        return Device.objects.filter(organization_id=login.organization_id)
+
+        if login.role == Login.ADMIN:
+            return Device.objects.all()
+        else:
+            return Device.objects.filter(organization_id=login.organization_id)
 
     def list(self, request):
         queryset = self._get_queryset(request)
@@ -622,6 +634,10 @@ class DeviceViewSet(_AbstractViewSet):
         if name_filter is not None:
             queryset = queryset.filter(
                 Q(name__icontains=name_filter) | Q(mqtt__icontains=name_filter))
+        device_group_filter = _get_request_param(request, 'deviceGroup', True)
+        if device_group_filter is not None:
+            queryset = queryset.filter(id__in=_get_relates(Device, 'device_id', Device2DeviceGroup,
+                                                           'device_group_id', device_group_filter).values_list('id', flat=True))
 
         result = self._list_data(request, queryset)
 
@@ -716,6 +732,80 @@ def _get_request_param(request, name, is_int=False, default=None):
     return result
 
 
+class DeviceGroupViewSet(_AbstractViewSet):
+    _serializer_classes = {
+        'list': DeviceGroupSerializers.ModelSerializer,
+        'retrieve': DeviceGroupSerializers.ModelSerializer,
+        'create': DeviceGroupSerializers.CreateSerializer,
+        'partial_update': DeviceGroupSerializers.CreateSerializer,
+    }
+
+    def _get_queryset(self, request):
+        return DeviceGroup.objects.all()
+
+    def list(self, request):
+        queryset = self._get_queryset(request)
+        name_filter = _get_request_param(request, 'name')
+        if name_filter is not None:
+            queryset = queryset.filter(name__icontains=name_filter)
+
+        result = self._list_data(request, queryset)
+
+        return self._response(result)
+
+    def retrieve(self, request, pk=None):
+        result = self._retrieve_data(request, pk)
+
+        return self._response(result)
+
+    def create(self, request):
+        serializer_class = self.get_serializer_class()
+        serializer = serializer_class(data=request.data)
+        result = None
+        if serializer.is_valid():
+            group = DeviceGroup(**serializer.data)
+            group.save()
+            result = self._response4update_n_create(
+                data=group, code=status.HTTP_201_CREATED)
+        else:
+            result = self._response4update_n_create(
+                message=self._get_validation_error_msg(serializer.errors, DeviceGroup))
+
+        return result
+
+    def partial_update(self, request, pk=None):
+        group = get_object_or_404(self._get_queryset(request), pk=pk)
+
+        serializer_class = self.get_serializer_class()
+        result = None
+
+        valid_result = self._validate_on_update(
+            pk, serializer_class, DeviceGroup, request.data)
+        serializer = valid_result.get('serializer')
+        update = valid_result.get('update')
+        if update is not None:
+            group.name = update.name
+            group.description = update.description
+            group.rights = update.rights
+            group.save()
+            result = self._response4update_n_create(data=group)
+        else:
+            result = self._response4update_n_create(
+                message=self._get_validation_error_msg(serializer.errors, DeviceGroup))
+
+        return result
+
+    def _alternative_valid(self, pk, data, errors, extra):
+        return (len(errors.keys()) == 1) and errors.keys().__contains__('name') and (errors.get('name')[0].code == 'unique') and not DeviceGroup.objects.filter(name=data.get('name')).filter(~Q(id=pk)).exists()
+
+    def delete(self, request, pk):
+        queryset = self._get_queryset(request)
+        group = get_object_or_404(queryset, pk=pk)
+        group.delete()
+        return self._response({'message': 'Device group was deleted',
+                               'data': self._serializer_classes.get('retrieve')(group).data})
+
+
 @api_view(['GET'])
 def get_current_user(request):
     user = request.user
@@ -743,6 +833,7 @@ class ReportType(Enum):
     DEPARTMENT = 'DEPARTMENT'
     ORGANIZATION = 'ORGANIZATION'
     DEVICE = 'DEVICE'
+    DEVICE_GROUP = 'DEVICE_GROUP'
     ALL = 'ALL'
 
 
@@ -1013,3 +1104,109 @@ def _add_or_remove_employees(request, department_id, do_add):
         failure = getted_employees.difference(success)
 
     return Response({'data': {'success': success, 'failure': failure}})
+
+
+def _get_relates(objects_clazz,
+                 objects_relation_key,
+                 relation_clazz,
+                 related_key,
+                 related_value,
+                 intersections=True):
+    result = {}
+
+    related_object_ids = relation_clazz.objects.filter(
+        Q(**{related_key: related_value})).values_list(objects_relation_key, flat=True)
+
+    queryset = None
+    if intersections:
+        queryset = objects_clazz.objects.filter(id__in=related_object_ids)
+    else:
+        queryset = objects_clazz.objects.exclude(id__in=related_object_ids)
+
+    return queryset
+
+
+def _get_other4device_group(request, device_group_id, object_clazz):
+    result = {}
+
+    args = None
+    relation_clazz = None
+    if object_clazz is Organization:
+        args = (Organization, 'organization_id', )
+        relation_clazz = DeviceGroup2Organization
+    elif object_clazz is Device:
+        args = (Device, 'device_id', )
+        relation_clazz = Device2DeviceGroup
+
+    queryset = _get_relates(*args, relation_clazz,
+                            'device_group_id', device_group_id, False)
+
+    result.update(data=DeviceGroupSerializers.ModelSerializer(
+        queryset, many=True).data)
+
+    return Response(result)
+
+
+@api_view(['GET'])
+def get_other_organizations4device_group(request, device_group_id):
+    return _get_other4device_group(request, device_group_id, Organization)
+
+
+@api_view(['GET'])
+def get_other_devices4device_group(request, device_group_id):
+    return _get_other4device_group(request, device_group_id, Device)
+
+
+def _add_or_remove4device_group(request, device_group_id, object_clazz, adding_mode=True):
+    login = Login.objects.get(user=request.user)
+    success = []
+    failure = []
+
+    object_key = None
+    relation_clazz = None
+    if object_clazz is Organization:
+        object_key = 'organization_id'
+        relation_clazz = DeviceGroup2Organization
+    elif object_clazz is Device:
+        object_key = 'device_id'
+        relation_clazz = Device2DeviceGroup
+
+    exists_ids = _get_relates(object_clazz, object_key, relation_clazz,
+                              'device_group_id', device_group_id).values_list('id', flat=True)
+
+    getted_ids = set(map(lambda i: int(i), set(
+        request.POST.get('ids').split(','))))
+
+    if adding_mode:
+        success = getted_ids.difference(exists_ids)
+        for added_id in success:
+            relation_clazz.objects.create(
+                **{object_key: added_id, 'device_group_id': device_group_id})
+    else:
+        success = getted_ids.intersection(exists_ids)
+        relation_clazz.objects.filter(device_group_id=device_group_id).filter(
+            **{(object_key + '__in'): success}).delete()
+
+    failure = getted_ids.difference(success)
+
+    return Response({'data': {'success': success, 'failure': failure}})
+
+
+@api_view(['POST'])
+def add_organizations2device_group(request, device_group_id):
+    return _add_or_remove4device_group(request, device_group_id, Organization)
+
+
+@api_view(['POST'])
+def remove_organizations2device_group(request, device_group_id):
+    return _add_or_remove4device_group(request, device_group_id, Organization, False)
+
+
+@api_view(['POST'])
+def add_devices2device_group(request, device_group_id):
+    return _add_or_remove4device_group(request, device_group_id, Device)
+
+
+@api_view(['POST'])
+def remove_devices4device_group(request, device_group_id):
+    return _add_or_remove4device_group(request, device_group_id, Device, False)
