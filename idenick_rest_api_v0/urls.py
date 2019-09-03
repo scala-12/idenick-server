@@ -7,7 +7,7 @@ from idenick_rest_api_v0.views import (
     ControllerViewSet, DepartmentViewSet, DeviceViewSet, EmployeeViewSet,
     OrganizationViewSet, RegistratorViewSet, UserViewSet, add_employees,
     get_current_user, get_other_employees, get_report, get_report_file,
-    remove_employees)
+    remove_employees, get_counts)
 
 ROUTER = DefaultRouter()
 ROUTER.register(r'organizations', OrganizationViewSet, basename='Organization')
@@ -23,6 +23,7 @@ urlpatterns = ROUTER.urls
 urlpatterns += [
     path('currentUser/', get_current_user),
     url('report/', get_report),
+    url('counts/', get_counts),
     url('reportFile/', get_report_file),
     url('departments/(?P<department_id>[0-9]+)/addEmployees/', add_employees),
     url('departments/(?P<department_id>[0-9]+)/otherEmployees/',

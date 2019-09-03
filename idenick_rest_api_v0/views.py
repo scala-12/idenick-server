@@ -730,6 +730,14 @@ def get_current_user(request):
     return Response({'data': response})
 
 
+@api_view(['GET'])
+def get_counts(request):
+    return Response({'organizations': Organization.objects.count(),
+                     'devices': Device.objects.count(),
+                     'deviceGroups': DeviceGroup.objects.count(),
+                     'employees': Employee.objects.count()})
+
+
 class ReportType(Enum):
     EMPLOYEE = 'EMPLOYEE'
     DEPARTMENT = 'DEPARTMENT'
