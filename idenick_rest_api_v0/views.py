@@ -908,7 +908,7 @@ def __get_report(request):
             device = Device.objects.get(id=entity_id)
             name = 'device '
 
-        name += entity_id
+        name += str(entity_id)
     else:
         name = 'full'
 
