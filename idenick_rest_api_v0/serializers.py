@@ -3,8 +3,9 @@ from django.contrib.auth.models import User
 from django.http.request import QueryDict
 from rest_framework import serializers
 
-from idenick_app.models import (Department, Device, DeviceGroup, Employee,
-                                Employee2Department, EmployeeRequest, Login,
+from idenick_app.models import (Department, Device, Device2Organization,
+                                DeviceGroup, Employee, Employee2Department,
+                                Employee2Organization, EmployeeRequest, Login,
                                 Organization)
 
 
@@ -52,7 +53,7 @@ class OrganizationSerializers:
             return Employee.objects.filter(organization=obj).count()
 
         def get_devices_count(self, obj):
-            return Device.objects.filter(organization=obj).count()
+            return Device2Organization.objects.filter(organization_id=obj.id).count()
 
         class Meta:
             model = Organization
@@ -241,51 +242,6 @@ class EmployeeRequestSerializer(serializers.ModelSerializer):
         ]
 
 
-class DeviceSerializers:
-    """Serializers for device-model"""
-    class CreateSerializer(serializers.ModelSerializer):
-        """Serializer for create device-model"""
-        class Meta:
-            model = Device
-            fields = [
-                'mqtt',
-                'name',
-                'description',
-                'organization',
-                'device_type',
-                'config',
-            ]
-
-        def to_representation(self, obj):
-            represent = None
-            if not(isinstance(obj.get('organization'), Organization)):
-                represent = QueryDict('', mutable=True)
-                represent.update(obj)
-                represent.__setitem__('organization', Organization.objects.get(
-                    pk=int(obj.get('organization'))))
-            else:
-                represent = obj
-
-            return represent
-
-    class ModelSerializer(serializers.ModelSerializer):
-        """Serializer for show device-model"""
-
-        class Meta:
-            model = Device
-            fields = [
-                'id',
-                'created_at',
-                'dropped_at',
-                'mqtt',
-                'name',
-                'description',
-                'organization',
-                'device_type',
-                'config',
-            ]
-
-
 class DeviceGroupSerializers:
     """Serializers for device-model"""
     class CreateSerializer(serializers.ModelSerializer):
@@ -320,4 +276,38 @@ class DeviceGroupSerializers:
                 'name',
                 'rights',
                 'description',
+            ]
+
+
+class DeviceSerializers:
+    """Serializers for device-model"""
+    class CreateSerializer(serializers.ModelSerializer):
+        """Serializer for create device-model"""
+        class Meta:
+            model = Device
+            fields = [
+                'mqtt',
+                'name',
+                'description',
+                'device_type',
+                'config',
+            ]
+
+    class ModelSerializer(serializers.ModelSerializer):
+        """Serializer for show device-model"""
+        # device_group = serializers.PrimaryKeyRelatedField(read_only=True)
+        device_group = DeviceGroupSerializers.ModelSerializer()
+
+        class Meta:
+            model = Device
+            fields = [
+                'id',
+                'created_at',
+                'dropped_at',
+                'mqtt',
+                'name',
+                'description',
+                'device_type',
+                'config',
+                'device_group',
             ]

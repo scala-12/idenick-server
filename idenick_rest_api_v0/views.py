@@ -16,10 +16,11 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 import idenick_rest_api_v0
-from idenick_app.models import (
-    Department, Device, Device2DeviceGroup, DeviceGroup,
-    DeviceGroup2Organization, Employee, Employee2Department, EmployeeRequest,
-    Login, Organization)
+from idenick_app.models import (Department, Device, Device2DeviceGroup,
+                                Device2Organization, DeviceGroup,
+                                DeviceGroup2Organization, Employee,
+                                Employee2Department, Employee2Organization,
+                                EmployeeRequest, Login, Organization)
 from idenick_rest_api_v0.serializers import (DepartmentSerializers,
                                              DeviceGroupSerializers,
                                              DeviceSerializers,
@@ -148,6 +149,12 @@ class OrganizationViewSet(_AbstractViewSet):
             queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
                 organization_id__in=organization_id_list).filter(
                 device_group_id=device_group_filter).values_list('organization', flat=True))
+        device_filter = _get_request_param(request, 'device', True)
+        if device_filter is not None:
+            organization_id_list = queryset.values_list('id', flat=True)
+            queryset = queryset.filter(id__in=Device2Organization.objects.filter(
+                organization_id__in=organization_id_list).filter(
+                device_id=device_filter).values_list('organization', flat=True))
 
         result = self._list_data(request, queryset)
 
@@ -623,10 +630,12 @@ class DeviceViewSet(_AbstractViewSet):
     def _get_queryset(self, request):
         login = _get_login(request)
 
-        if login.role == Login.ADMIN:
-            return Device.objects.all()
-        else:
-            return Device.objects.filter(organization_id=login.organization_id)
+        result = Device.objects.all()
+        if login.role != Login.ADMIN:
+            result = result.filter(id__in=Device2Organization.objects.filter(
+                organization_id=login.organization_id).values_list('device_id', flat=True))
+
+        return result
 
     def list(self, request):
         queryset = self._get_queryset(request)
@@ -638,6 +647,12 @@ class DeviceViewSet(_AbstractViewSet):
         if device_group_filter is not None:
             queryset = queryset.filter(id__in=_get_relates(Device, 'device_id', Device2DeviceGroup,
                                                            'device_group_id', device_group_filter).values_list('id', flat=True))
+        organization_filter = _get_request_param(request, 'organization', True)
+        if organization_filter is not None:
+            device_id_list = queryset.values_list('id', flat=True)
+            queryset = queryset.filter(id__in=Device2Organization.objects.filter(
+                device_id__in=device_id_list).filter(
+                organization_id=organization_filter).values_list('device_id', flat=True))
 
         result = self._list_data(request, queryset)
 
@@ -648,25 +663,25 @@ class DeviceViewSet(_AbstractViewSet):
 
         login = _get_login(request)
 
-        if 'full' in request.GET:
+        if ('full' in request.GET) and ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
             result.update({'organization': OrganizationSerializers.ModelSerializer(
-                Organization.objects.get(id=result.get('data',).get('organization'))).data})
+                Organization.objects.get(id=login.organization_id)).data})
 
         return self._response(result)
 
     def create(self, request):
-        device_data = QueryDict('', mutable=True)
-        device_data.update(request.data)
-        organization_id = {'organization': Login.objects.get(
-            user=request.user).organization_id}
-        device_data.update(organization_id)
-
+        login = _get_login(request)
         serializer_class = self.get_serializer_class()
-        serializer = serializer_class(data=device_data)
+        serializer = serializer_class(data=request.data)
         result = None
         if serializer.is_valid():
             device = Device(**serializer.data)
             device.save()
+
+            if login.role == Login.REGISTRATOR:
+                Device2Organization.objects.create(
+                    **{'organization_id': login.organization_id, 'device_id': device.id})
+
             result = self._response4update_n_create(
                 data=device, code=status.HTTP_201_CREATED)
         else:
@@ -683,12 +698,10 @@ class DeviceViewSet(_AbstractViewSet):
 
         device_data = QueryDict('', mutable=True)
         device_data.update(request.data)
-        organization_id = {'organization': Login.objects.get(
-            user=request.user).organization_id}
-        device_data.update(organization_id)
+        device_data.update({'mqtt': device.mqtt})
 
         valid_result = self._validate_on_update(
-            pk, serializer_class, Device, device_data, organization_id)
+            pk, serializer_class, Device, device_data)
         serializer = valid_result.get('serializer')
         update = valid_result.get('update')
         if update is not None:
@@ -704,11 +717,9 @@ class DeviceViewSet(_AbstractViewSet):
         return result
 
     def _alternative_valid(self, pk, data, errors, extra):
-        return (len(errors.keys()) == 1) and errors.keys().__contains__('non_field_errors') \
-            and (errors.get('non_field_errors')[0].code == 'unique') \
-            and not Device.objects.filter(Q(name=data.get('name'))
-                                          & Q(organization_id=extra.get('organization'))) \
-            .filter(~Q(id=pk)).exists()
+        return (len(errors.keys()) == 1) and errors.keys().__contains__('mqtt') \
+            and (errors.get('mqtt')[0].code == 'unique') \
+            and not Device.objects.filter(mqtt=data.get('mqtt')).filter(~Q(id=pk)).exists()
 
     def delete(self, request, pk):
         queryset = self._get_queryset(request)
@@ -750,6 +761,18 @@ class DeviceGroupViewSet(_AbstractViewSet):
         name_filter = _get_request_param(request, 'name')
         if name_filter is not None:
             queryset = queryset.filter(name__icontains=name_filter)
+        organization_filter = _get_request_param(request, 'organization', True)
+        if organization_filter is not None:
+            group_id_list = queryset.values_list('id', flat=True)
+            queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
+                device_group_id__in=group_id_list).filter(
+                organization_id=organization_filter).values_list('device_group_id', flat=True))
+        device_filter = _get_request_param(request, 'device', True)
+        if device_filter is not None:
+            group_id_list = queryset.values_list('id', flat=True)
+            queryset = queryset.filter(id__in=Device2DeviceGroup.objects.filter(
+                device_group_id__in=group_id_list).filter(
+                device_id=device_filter).values_list('device_group_id', flat=True))
 
         result = self._list_data(request, queryset)
 

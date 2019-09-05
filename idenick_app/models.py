@@ -173,16 +173,19 @@ class Device(_AbstractEntry4Old):
     description = models.CharField(max_length=500, blank=True)
     device_type = models.IntegerField(db_column='type', default=0)
     config = models.CharField(max_length=2000, blank=True)
-    organization = models.ForeignKey(
-        'Organization', on_delete=models.CASCADE, null=True, blank=True)
+    device_group = models.ForeignKey(
+        'DeviceGroup', db_column='devicegroupsid', null=True, on_delete=models.CASCADE)
 
     def __str__(self):
-        return self._str() + ('mqtt[%s] [%s] [%s] [%s] with config [%s]' % (self.mqtt, self.name,
-                                                                            self.device_type, self.description, self.config))
+        return self._str() + ('mqtt[%s] [%s] [%s] [%s] [%s] with config [%s]'
+                              % (self.mqtt, self.name,
+                                 self.device_type,
+                                 self.description,
+                                 self.device_group,
+                                 self.config))
 
     class Meta:
         db_table = 'devices'
-        unique_together = (('organization', 'name'),)
 
 
 class DeviceGroup(_AbstractEntry4Old):
@@ -207,7 +210,7 @@ class DeviceGroup2Organization(_AbstractEntry4Old):
     device_group = models.ForeignKey(
         'DeviceGroup', db_column='devicegroupsid', related_name='organizations', on_delete=models.CASCADE)
     organization = models.ForeignKey(
-        'Organization', db_column='organizationsid', related_name='device_groups', on_delete=models.CASCADE)
+        'Organization', db_column='companyid', related_name='device_groups', on_delete=models.CASCADE)
 
     def __str__(self):
         return self._str() + ('[%s] in [%s]' % (self.device_group, self.organization))
@@ -228,6 +231,20 @@ class Device2DeviceGroup(_AbstractEntry4Old):
 
     class Meta:
         unique_together = (('device', 'device_group'),)
+
+
+class Device2Organization(_AbstractEntry4Old):
+    """Model of relation between device and device group"""
+    organization = models.ForeignKey(
+        'Organization', db_column='companysid', related_name='devices', on_delete=models.CASCADE)
+    device = models.ForeignKey(
+        'Device', db_column='devicesid', related_name='organizations', on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self._str() + ('[%s] in [%s]' % (self.device, self.device_group))
+
+    class Meta:
+        unique_together = (('device', 'organization'),)
 
 
 class EmployeeRequest(models.Model):
