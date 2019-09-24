@@ -136,10 +136,8 @@ class OrganizationViewSet(_AbstractViewSet):
     }
 
     def _get_queryset(self, request):
-        return Organization.objects.all()
+        queryset = Organization.objects.all()
 
-    def list(self, request):
-        queryset = self._get_queryset(request)
         name_filter = _get_request_param(request, 'name')
         if name_filter is not None:
             queryset = queryset.filter(name__icontains=name_filter)
@@ -155,8 +153,17 @@ class OrganizationViewSet(_AbstractViewSet):
             queryset = queryset.filter(id__in=Device2Organization.objects.filter(
                 organization_id__in=organization_id_list).filter(
                 device_id=device_filter).values_list('organization', flat=True))
+        employee_filter = _get_request_param(request, 'employee', True)
+        if employee_filter is not None:
+            organization_id_list = queryset.values_list('id', flat=True)
+            queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
+                organization_id__in=organization_id_list).filter(
+                employee_id=employee_filter).values_list('organization', flat=True))
 
-        result = self._list_data(request, queryset)
+        return queryset
+
+    def list(self, request):
+        result = self._list_data(request)
 
         return self._response(result)
 
@@ -223,16 +230,14 @@ class DepartmentViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request):
         login = _get_login(request)
-        result = None
+        queryset = None
         role = login.role
         if (role == Login.ADMIN):
-            result = Department.objects.all()
+            queryset = Department.objects.all()
         elif (role == Login.CONTROLLER) or (role == Login.REGISTRATOR):
-            result = Department.objects.filter(organization=login.organization)
-        return result
+            queryset = Department.objects.filter(
+                organization_id=login.organization_id)
 
-    def list(self, request):
-        queryset = self._get_queryset(request)
         name_filter = _get_request_param(request, 'name')
         if name_filter is not None:
             queryset = queryset.filter(name__icontains=name_filter)
@@ -241,6 +246,11 @@ class DepartmentViewSet(_AbstractViewSet):
         if employee_filter is not None:
             queryset = queryset.filter(id__in=Employee2Department.objects.filter(
                 employee_id=employee_filter).values_list('department_id', flat=True))
+
+        return queryset
+
+    def list(self, request):
+        queryset = self._get_queryset(request)
 
         result = self._list_data(request, queryset)
 
@@ -335,49 +345,8 @@ class EmployeeViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request):
         login = _get_login(request)
-        department_filter = _get_request_param(request, 'department', True)
 
-        result = None
-        if (login.role == Login.CONTROLLER):
-            filtered_employees = Employee2Department.objects.filter(
-                department__organization=login.organization)
-            if (department_filter is not None):
-                filtered_employees = filtered_employees.filter(
-                    department_id=department_filter)
-            employees_ids = filtered_employees.values_list(
-                'employee_id', flat=True)
-            result = Employee.objects.filter(id__in=employees_ids)
-        elif (login.role == Login.REGISTRATOR):
-            organization_employees = Employee.objects.filter(
-                organization=login.organization)
-            if (department_filter is not None):
-                all_employees_ids = organization_employees.values_list(
-                    'id', flat=True)
-                employees_ids = Employee2Department.objects.filter(employee_id__in=all_employees_ids).filter(
-                    department_id=department_filter).values_list('employee_id', flat=True)
-                result = Employee.objects.filter(id__in=employees_ids)
-            else:
-                result = organization_employees
-
-        return result
-
-    # TODO: check it
-    def _withExtra(self, request, department_id=None):
-        result = {}
-        if 'full' in request.GET:
-            login = _get_login(request)
-            organization = OrganizationSerializers.ModelSerializer(
-                login.organization).data
-
-            result = {'organization': organization}
-            if department_id is not None:
-                result.update({'department': DepartmentSerializers.ModelSerializer(
-                    Department.objects.get(pk=department_id)).data})
-
-        return result
-
-    def list(self, request):
-        queryset = self._get_queryset(request)
+        queryset = Employee.objects.all()
 
         name_filter = _get_request_param(request, 'name')
         if name_filter is not None:
@@ -389,36 +358,59 @@ class EmployeeViewSet(_AbstractViewSet):
                      | Q(first_name__icontains=name_filter)
                      | Q(patronymic__icontains=name_filter))
 
-        result = self._list_data(request, queryset)
-
         department_filter = _get_request_param(request, 'department', True)
-        result.update(self._withExtra(request, department_filter))
+        if (department_filter is not None):
+            queryset = queryset.filter(
+                id__in=Employee2Department.objects.filter(
+                    department_id=department_filter).values_list('employee', flat=True))
+
+        organization_filter = None
+        if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
+            organization_filter = login.organization_id
+        elif login.role == Login.ADMIN:
+            organization_filter = _get_request_param(
+                request, 'organization', True)
+
+        if organization_filter is not None:
+            employee_id_list = queryset.values_list('id', flat=True)
+            queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
+                organization_id=organization_filter).filter(
+                employee_id__in=employee_id_list).values_list('employee', flat=True))
+
+        return queryset
+
+    def list(self, request):
+        queryset = self._get_queryset(request)
+
+        result = self._list_data(request, queryset)
 
         return self._response(result)
 
     def retrieve(self, request, pk):
         result = self._retrieve_data(
             request, pk, self._get_queryset(request))
-        department_filter = _get_request_param(request, 'department', True)
-        result.update(self._withExtra(request, department_filter))
 
-        employee_full = EmployeeSerializers.FullModelSerializer(
-            Employee.objects.get(pk=result.get('data').get('id'))).data
-        if 'full' in request.GET:
-            result.update({'departments': map(lambda i: i.get(
-                'department'), employee_full.get('departments'))})
+        login = _get_login(request)
+        if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
+            result.update({'departments_count': Employee2Department.objects.filter(
+                employee_id=pk).filter(department__organization_id=login.organization_id).count()})
+            if 'full' in request.GET:
+                organization = OrganizationSerializers.ModelSerializer(
+                    login.organization).data
+
+                result.update({'organization': organization})
 
         return self._response(result)
 
     def partial_update(self, request, pk=None):
-        queryset = Employee.objects.all()
+        queryset = self._get_queryset(request)
         employee = get_object_or_404(queryset, pk=pk)
 
         serializer_class = self.get_serializer_class()
         serializer = serializer_class(data=request.data)
         result = None
         login = _get_login(request)
-        if serializer.is_valid() and (login.organization.id == employee.organization_id):
+        if serializer.is_valid():
             data = serializer.data
             employee.last_name = data.get('last_name', employee.last_name)
             employee.first_name = data.get(
@@ -426,13 +418,6 @@ class EmployeeViewSet(_AbstractViewSet):
             employee.patronymic = data.get(
                 'patronymic', employee.patronymic)
             employee.save()
-
-            departments_ids = request.data.getlist('departments', [])
-            departments = Department.objects.filter(
-                organization_id=employee.organization_id).filter(id__in=departments_ids)
-            for department in departments:
-                Employee2Department.objects.create(
-                    employee=employee, department=department)
 
             result = self._response4update_n_create(data=employee)
 
@@ -444,17 +429,13 @@ class EmployeeViewSet(_AbstractViewSet):
         result = None
 
         login = _get_login(request)
-        if serializer.is_valid() and (login.role == Login.REGISTRATOR):
+        if serializer.is_valid():
             employee = Employee(**serializer.data)
-            employee.organization = login.organization
             employee.save()
 
-            departments_ids = request.data.getlist('departments', [])
-            departments = Department.objects.filter(
-                organization_id=employee.organization_id).filter(id__in=departments_ids)
-            for department in departments:
-                Employee2Department.objects.create(
-                    employee=employee, department=department)
+            if login.role == Login.REGISTRATOR:
+                Employee2Organization.objects.create(
+                    **{'organization_id': login.organization_id, 'employee_id': employee.id})
 
             result = self._response4update_n_create(
                 data=employee, code=status.HTTP_201_CREATED)
@@ -624,7 +605,7 @@ class DeviceViewSet(_AbstractViewSet):
         'list': DeviceSerializers.ModelSerializer,
         'retrieve': DeviceSerializers.ModelSerializer,
         'create': DeviceSerializers.CreateSerializer,
-        'partial_update': DeviceSerializers.CreateSerializer,
+        'partial_update': DeviceSerializers.UpdateSerializer,
     }
 
     def _get_queryset(self, request):
@@ -639,6 +620,8 @@ class DeviceViewSet(_AbstractViewSet):
 
     def list(self, request):
         queryset = self._get_queryset(request)
+        login = _get_login(request)
+
         name_filter = _get_request_param(request, 'name')
         if name_filter is not None:
             queryset = queryset.filter(
@@ -646,7 +629,7 @@ class DeviceViewSet(_AbstractViewSet):
         device_group_filter = _get_request_param(request, 'deviceGroup', True)
         if device_group_filter is not None:
             queryset = queryset.filter(id__in=_get_relates(Device, 'device_id', Device2DeviceGroup,
-                                                           'device_group_id', device_group_filter).values_list('id', flat=True))
+                                                           'device_group_id', device_group_filter, extra_vars={'organization': login.organization_id}).values_list('id', flat=True))
         organization_filter = _get_request_param(request, 'organization', True)
         if organization_filter is not None:
             device_id_list = queryset.values_list('id', flat=True)
@@ -699,6 +682,8 @@ class DeviceViewSet(_AbstractViewSet):
         device_data = QueryDict('', mutable=True)
         device_data.update(request.data)
         device_data.update({'mqtt': device.mqtt})
+        device.device_type = 0 if device.device_type is None else device.device_type
+        device_data.update({'device_type': device.device_type})
 
         valid_result = self._validate_on_update(
             pk, serializer_class, Device, device_data)
@@ -754,14 +739,20 @@ class DeviceGroupViewSet(_AbstractViewSet):
     }
 
     def _get_queryset(self, request):
-        return DeviceGroup.objects.all()
+        queryset = DeviceGroup.objects.all()
 
-    def list(self, request):
-        queryset = self._get_queryset(request)
+        login = _get_login(request)
+
         name_filter = _get_request_param(request, 'name')
         if name_filter is not None:
             queryset = queryset.filter(name__icontains=name_filter)
-        organization_filter = _get_request_param(request, 'organization', True)
+
+        organization_filter = None
+        if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
+            organization_filter = login.organization_id
+        elif login.role == Login.ADMIN:
+            organization_filter = _get_request_param(
+                request, 'organization', True)
         if organization_filter is not None:
             group_id_list = queryset.values_list('id', flat=True)
             queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
@@ -773,6 +764,11 @@ class DeviceGroupViewSet(_AbstractViewSet):
             queryset = queryset.filter(id__in=Device2DeviceGroup.objects.filter(
                 device_group_id__in=group_id_list).filter(
                 device_id=device_filter).values_list('device_group_id', flat=True))
+
+        return queryset
+
+    def list(self, request):
+        queryset = self._get_queryset(request)
 
         result = self._list_data(request, queryset)
 
@@ -885,8 +881,10 @@ def __get_report(request):
 
     employees_queryset = Employee.objects.all()
     if login.role == Login.CONTROLLER:
-        employees_queryset = employees_queryset.filter(
-            organization_id=login.organization_id)
+        employee_id_list = employees_queryset.values_list('id', flat=True)
+        employees_queryset = employees_queryset.filter(id__in=Employee2Organization.objects.filter(
+            organization_id=login.organization_id).filter(
+            employee_id__in=employee_id_list).values_list('employee', flat=True))
 
     name = None
     employees_ids = None
@@ -899,8 +897,11 @@ def __get_report(request):
                 department_id=entity_id).values_list('employee_id', flat=True))
             name = 'department '
         elif entity_type == ReportType.ORGANIZATION:
-            employees_queryset = employees_queryset.filter(
-                organization_id=entity_id)
+            employee_id_list = employees_queryset.values_list('id', flat=True)
+            employees_queryset = employees_queryset.filter(id__in=Employee2Organization.objects.filter(
+                organization_id=entity_id).filter(
+                employee_id__in=employee_id_list).values_list('employee', flat=True))
+
             name = 'organization '
         elif entity_type == ReportType.DEVICE:
             employees_ids = EmployeeRequest.objects.filter(
@@ -1043,11 +1044,6 @@ def get_report(request):
             result.update(organizations={
                 login.organization_id: OrganizationSerializers.ModelSerializer(
                     Organization.objects.get(pk=login.organization_id)).data})
-        elif login.role == Login.ADMIN:
-            organizations_ids = set(
-                employees_queryset.values_list('organization_id', flat=True))
-            result.update({
-                'organizations': _get_organizations_by_id(organizations_ids)})
 
     if show_department:
         result.update({'department': DepartmentSerializers.ModelSerializer(
@@ -1088,7 +1084,8 @@ def _get_relates(slave_clazz,
                  relation_clazz,
                  master_key,
                  master_id,
-                 intersections=True):
+                 intersections=True,
+                 extra_vars=None,):
     result = {}
 
     related_object_ids = relation_clazz.objects.filter(
@@ -1100,19 +1097,10 @@ def _get_relates(slave_clazz,
     else:
         queryset = slave_clazz.objects.exclude(id__in=related_object_ids)
 
+    if (relation_clazz is Employee2Department) and (extra_vars is not None):
+        queryset = queryset.filter(organization_id=extra_vars.get('organization'))
+
     return queryset
-
-
-def _get_relation_key(clazz):
-    result = None
-    if clazz is Organization:
-        result = 'organization_id'
-    elif clazz is Device:
-        result = 'device_id'
-    elif clazz is DeviceGroup:
-        result = 'device_group_id'
-
-    return result
 
 
 def _get_relation_clazz(clazz1, clazz2, swap_if_undefined=True):
@@ -1125,6 +1113,11 @@ def _get_relation_clazz(clazz1, clazz2, swap_if_undefined=True):
     elif clazz1 is Device:
         if clazz2 is Organization:
             result = Device2Organization
+    elif clazz1 is Employee:
+        if clazz2 is Organization:
+            result = Employee2Organization
+        if clazz2 is Department:
+            result = Employee2Department
 
     return result if result is not None else (_get_relation_clazz(clazz2, clazz1, False) if swap_if_undefined else result)
 
@@ -1134,11 +1127,11 @@ def _get_login(request):
 
 
 _ENTRY2CLAZZ_N_SERIALIZER = {
-    'devices': {'clazz': Device, 'serializer': DeviceSerializers.ModelSerializer},
-    'deviceGroups': {'clazz': DeviceGroup, 'serializer': DeviceGroupSerializers.ModelSerializer},
-    'organizations': {'clazz': Organization, 'serializer': OrganizationSerializers.ModelSerializer},
-    'employees': {'clazz': Employee, 'serializer': EmployeeSerializers.ModelSerializer},
-    'departments': {'clazz': Department, 'serializer': DepartmentSerializers.ModelSerializer},
+    'devices': {'clazz': Device, 'serializer': DeviceSerializers.ModelSerializer, 'key': 'device_id'},
+    'deviceGroups': {'clazz': DeviceGroup, 'serializer': DeviceGroupSerializers.ModelSerializer, 'key': 'device_group_id'},
+    'organizations': {'clazz': Organization, 'serializer': OrganizationSerializers.ModelSerializer, 'key': 'organization_id'},
+    'employees': {'clazz': Employee, 'serializer': EmployeeSerializers.ModelSerializer, 'key': 'employee_id'},
+    'departments': {'clazz': Department, 'serializer': DepartmentSerializers.ModelSerializer, 'key': 'department_id'},
 }
 
 
@@ -1148,21 +1141,22 @@ def _get_clazz_n_serializer_by_entry_name(name, is_many=False):
 
 
 def _add_or_remove_relations(request, master_name, master_id, slave_name, adding_mode=True):
-    master_clazz = _get_clazz_n_serializer_by_entry_name(
-        master_name, True).get('clazz')
-    slave_clazz = _get_clazz_n_serializer_by_entry_name(
-        slave_name).get('clazz')
+    master_info = _get_clazz_n_serializer_by_entry_name(master_name, True)
+    slave_info = _get_clazz_n_serializer_by_entry_name(slave_name)
+
+    master_clazz = master_info.get('clazz')
+    slave_clazz = slave_info.get('clazz')
 
     login = _get_login(request)
     success = []
     failure = []
 
-    master_key = _get_relation_key(master_clazz)
-    slave_key = _get_relation_key(slave_clazz)
+    master_key = master_info.get('key')
+    slave_key = slave_info.get('key')
     relation_clazz = _get_relation_clazz(master_clazz, slave_clazz)
 
     exists_ids = _get_relates(slave_clazz, slave_key, relation_clazz,
-                              master_key, master_id).values_list('id', flat=True)
+                              master_key, master_id, extra_vars={'organization': login.organization_id}).values_list('id', flat=True)
 
     getted_ids = set(map(lambda i: int(i), set(
         request.POST.get('ids').split(','))))
@@ -1196,16 +1190,23 @@ def remove_relation(request, master_name, master_id, slave_name):
 def get_non_related(request, master_name, master_id, slave_name):
     result = {}
 
-    master_clazz = _get_clazz_n_serializer_by_entry_name(
-        master_name, True).get('clazz')
+    master_info = _get_clazz_n_serializer_by_entry_name(master_name, True)
     slave_info = _get_clazz_n_serializer_by_entry_name(slave_name)
 
-    master_key = _get_relation_key(master_clazz)
-    slave_key = _get_relation_key(slave_info.get('clazz'))
-    relation_clazz = _get_relation_clazz(master_clazz, slave_info.get('clazz'))
+    master_key = master_info.get('key')
+    slave_key = slave_info.get('key')
+    relation_clazz = _get_relation_clazz(
+        master_info.get('clazz'), slave_info.get('clazz'))
+
+    extra_vars = None
+    if (relation_clazz is Employee2Department):
+        login = _get_login(request)
+        role = login.role
+        if (role == Login.CONTROLLER) or (role == Login.REGISTRATOR):
+            extra_vars = {'organization': login.organization_id}
 
     queryset = _get_relates(slave_info.get('clazz'), slave_key,
-                            relation_clazz, master_key, master_id, False)
+                            relation_clazz, master_key, master_id, intersections=False, extra_vars=extra_vars)
 
     result.update(data=slave_info.get('serializer')(queryset, many=True).data)
 

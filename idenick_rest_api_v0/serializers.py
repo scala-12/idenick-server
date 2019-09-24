@@ -3,10 +3,11 @@ from django.contrib.auth.models import User
 from django.http.request import QueryDict
 from rest_framework import serializers
 
-from idenick_app.models import (Department, Device, Device2Organization,
-                                DeviceGroup, Employee, Employee2Department,
-                                Employee2Organization, EmployeeRequest, Login,
-                                Organization)
+from idenick_app.models import (Department, Device, Device2DeviceGroup,
+                                Device2Organization, DeviceGroup,
+                                DeviceGroup2Organization, Employee,
+                                Employee2Department, Employee2Organization,
+                                EmployeeRequest, Login, Organization)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -39,6 +40,7 @@ class OrganizationSerializers:
         registrators_count = serializers.SerializerMethodField()
         employees_count = serializers.SerializerMethodField()
         devices_count = serializers.SerializerMethodField()
+        device_groups_count = serializers.SerializerMethodField()
 
         def get_departments_count(self, obj):
             return Department.objects.filter(organization=obj).count()
@@ -50,10 +52,13 @@ class OrganizationSerializers:
             return Login.objects.filter(role=Login.REGISTRATOR, organization=obj).count()
 
         def get_employees_count(self, obj):
-            return Employee.objects.filter(organization=obj).count()
+            return Employee2Organization.objects.filter(organization_id=obj.id).count()
 
         def get_devices_count(self, obj):
             return Device2Organization.objects.filter(organization_id=obj.id).count()
+
+        def get_device_groups_count(self, obj):
+            return DeviceGroup2Organization.objects.filter(organization_id=obj.id).count()
 
         class Meta:
             model = Organization
@@ -69,6 +74,7 @@ class OrganizationSerializers:
                 'registrators_count',
                 'employees_count',
                 'devices_count',
+                'device_groups_count',
             ]
 
 
@@ -130,6 +136,14 @@ class _DepartmentOfEmployeeSerializers(serializers.ModelSerializer):
         fields = ['department']
 
 
+class _OrganizationOfEmployeeSerializers(serializers.ModelSerializer):
+    organization = OrganizationSerializers.ModelSerializer()
+
+    class Meta:
+        model = Employee2Organization
+        fields = ['organization']
+
+
 class EmployeeSerializers():
     """Serializers for employee-model"""
     class CreateSerializer(serializers.ModelSerializer):
@@ -144,24 +158,11 @@ class EmployeeSerializers():
 
     class ModelSerializer(serializers.ModelSerializer):
         """Serializer for show employee-model"""
-        class Meta:
-            model = Employee
-            fields = [
-                'id',
-                'created_at',
-                'dropped_at',
-                'last_name',
-                'first_name',
-                'patronymic',
-                'organization',
-            ]
 
-    class FullModelSerializer(serializers.ModelSerializer):
-        """Serializer for show all fields employee-model"""
-        departments = _DepartmentOfEmployeeSerializers(many=True)
-#         departments = serializers.SerializerMethodField()
-#         def get_departments(self, obj):
-#             return DepartmentSerializers.ModelSerializer(Department.objects.filter(id__in=set(Employee2Department.objects.filter(employee_id=obj.id).values_list('department', flat=True))), many=True).data
+        organizations_count = serializers.SerializerMethodField()
+
+        def get_organizations_count(self, obj):
+            return Employee2Organization.objects.filter(employee_id=obj.id).count()
 
         class Meta:
             model = Employee
@@ -172,8 +173,7 @@ class EmployeeSerializers():
                 'last_name',
                 'first_name',
                 'patronymic',
-                'departments',
-                'organization',
+                'organizations_count',
             ]
 
 
@@ -267,6 +267,15 @@ class DeviceGroupSerializers:
     class ModelSerializer(serializers.ModelSerializer):
         """Serializer for show device-model"""
 
+        devices_count = serializers.SerializerMethodField()
+        organizations_count = serializers.SerializerMethodField()
+
+        def get_devices_count(self, obj):
+            return Device2DeviceGroup.objects.filter(device_group_id=obj.id).count()
+
+        def get_organizations_count(self, obj):
+            return DeviceGroup2Organization.objects.filter(device_group_id=obj.id).count()
+
         class Meta:
             model = DeviceGroup
             fields = [
@@ -276,6 +285,8 @@ class DeviceGroupSerializers:
                 'name',
                 'rights',
                 'description',
+                'devices_count',
+                'organizations_count',
             ]
 
 
@@ -292,11 +303,29 @@ class DeviceSerializers:
                 'device_type',
                 'config',
             ]
+    
+    class UpdateSerializer(serializers.ModelSerializer):
+        """Serializer for update device-model"""
+        class Meta:
+            model = Device
+            fields = [
+                'mqtt',
+                'name',
+                'description',
+                'config',
+            ]
 
     class ModelSerializer(serializers.ModelSerializer):
         """Serializer for show device-model"""
-        # device_group = serializers.PrimaryKeyRelatedField(read_only=True)
-        device_group = DeviceGroupSerializers.ModelSerializer()
+
+        device_groups_count = serializers.SerializerMethodField()
+        organizations_count = serializers.SerializerMethodField()
+
+        def get_device_groups_count(self, obj):
+            return Device2DeviceGroup.objects.filter(device_id=obj.id).count()
+
+        def get_organizations_count(self, obj):
+            return Device2Organization.objects.filter(device_id=obj.id).count()
 
         class Meta:
             model = Device
@@ -309,5 +338,6 @@ class DeviceSerializers:
                 'description',
                 'device_type',
                 'config',
-                'device_group',
+                'device_groups_count',
+                'organizations_count',
             ]

@@ -43,9 +43,6 @@ class _AbstractEntry4Old(models.Model):
 
 class Employee(_AbstractEntry4Old):
     """Employee model"""
-    organization = models.ForeignKey(
-        'Organization', related_name='employees', null=True, default=None,
-        on_delete=models.SET_NULL)
     guid = models.CharField(max_length=50, unique=True,
                             db_column='userid', default=uuid.uuid4)
     last_name = models.CharField(db_column='surname', max_length=64)
@@ -217,6 +214,20 @@ class DeviceGroup2Organization(_AbstractEntry4Old):
 
     class Meta:
         unique_together = (('device_group', 'organization'),)
+
+
+class Employee2Organization(_AbstractEntry4Old):
+    """Model of relation between employee and organization"""
+    employee = models.ForeignKey(
+        'Employee', db_column='usersid', related_name='organizations', on_delete=models.CASCADE)
+    organization = models.ForeignKey(
+        'Organization', db_column='companyid', related_name='employees', on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self._str() + ('[%s] in [%s]' % (self.employee, self.organization))
+
+    class Meta:
+        unique_together = (('employee', 'organization'),)
 
 
 class Device2DeviceGroup(_AbstractEntry4Old):
