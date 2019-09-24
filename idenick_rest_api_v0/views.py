@@ -1098,7 +1098,12 @@ def _get_relates(slave_clazz,
         queryset = slave_clazz.objects.exclude(id__in=related_object_ids)
 
     if (relation_clazz is Employee2Department) and (extra_vars is not None):
-        queryset = queryset.filter(organization_id=extra_vars.get('organization'))
+        organization = extra_vars.get('organization')
+        if slave_clazz is Employee:
+            queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
+                organization_id=organization).values_list('employee', flat=True))
+        elif slave_clazz is Department:
+            queryset = queryset.filter(organization_id=organization)
 
     return queryset
 
