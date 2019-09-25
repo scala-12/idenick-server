@@ -629,7 +629,8 @@ class DeviceViewSet(_AbstractViewSet):
         device_group_filter = _get_request_param(request, 'deviceGroup', True)
         if device_group_filter is not None:
             queryset = queryset.filter(id__in=_get_relates(Device, 'device_id', Device2DeviceGroup,
-                                                           'device_group_id', device_group_filter, extra_vars={'organization': login.organization_id}).values_list('id', flat=True))
+                                                           'device_group_id', device_group_filter,
+                                                           login).values_list('id', flat=True))
         organization_filter = _get_request_param(request, 'organization', True)
         if organization_filter is not None:
             device_id_list = queryset.values_list('id', flat=True)
@@ -786,6 +787,13 @@ class DeviceGroupViewSet(_AbstractViewSet):
         if serializer.is_valid():
             group = DeviceGroup(**serializer.data)
             group.save()
+
+            login = _get_login(request)
+            if login.role == Login.REGISTRATOR:
+                DeviceGroup2Organization.objects.create(
+                    **{'organization_id': login.organization_id,
+                       'device_group_id': group.id})
+
             result = self._response4update_n_create(
                 data=group, code=status.HTTP_201_CREATED)
         else:
@@ -1084,8 +1092,8 @@ def _get_relates(slave_clazz,
                  relation_clazz,
                  master_key,
                  master_id,
-                 intersections=True,
-                 extra_vars=None,):
+                 login,
+                 intersections=True,):
     result = {}
 
     related_object_ids = relation_clazz.objects.filter(
@@ -1097,13 +1105,22 @@ def _get_relates(slave_clazz,
     else:
         queryset = slave_clazz.objects.exclude(id__in=related_object_ids)
 
-    if (relation_clazz is Employee2Department) and (extra_vars is not None):
-        organization = extra_vars.get('organization')
-        if slave_clazz is Employee:
-            queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
-                organization_id=organization).values_list('employee', flat=True))
-        elif slave_clazz is Department:
-            queryset = queryset.filter(organization_id=organization)
+    role = login.role
+    if (role == Login.CONTROLLER) or (role == Login.REGISTRATOR):
+        organization = login.organization_id
+        if relation_clazz is Employee2Department:
+            if slave_clazz is Employee:
+                queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
+                    organization_id=organization).values_list('employee', flat=True))
+            elif slave_clazz is Department:
+                queryset = queryset.filter(organization_id=organization)
+        elif relation_clazz is Device2DeviceGroup:
+            if slave_clazz is Device:
+                queryset = queryset.filter(id__in=Device2Organization.objects.filter(
+                    organization_id=organization).values_list('device', flat=True))
+            elif slave_clazz is DeviceGroup:
+                queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
+                    organization_id=organization).values_list('device_group', flat=True))
 
     return queryset
 
@@ -1161,7 +1178,7 @@ def _add_or_remove_relations(request, master_name, master_id, slave_name, adding
     relation_clazz = _get_relation_clazz(master_clazz, slave_clazz)
 
     exists_ids = _get_relates(slave_clazz, slave_key, relation_clazz,
-                              master_key, master_id, extra_vars={'organization': login.organization_id}).values_list('id', flat=True)
+                              master_key, master_id, login).values_list('id', flat=True)
 
     getted_ids = set(map(lambda i: int(i), set(
         request.POST.get('ids').split(','))))
@@ -1203,15 +1220,9 @@ def get_non_related(request, master_name, master_id, slave_name):
     relation_clazz = _get_relation_clazz(
         master_info.get('clazz'), slave_info.get('clazz'))
 
-    extra_vars = None
-    if (relation_clazz is Employee2Department):
-        login = _get_login(request)
-        role = login.role
-        if (role == Login.CONTROLLER) or (role == Login.REGISTRATOR):
-            extra_vars = {'organization': login.organization_id}
-
+    login = _get_login(request)
     queryset = _get_relates(slave_info.get('clazz'), slave_key,
-                            relation_clazz, master_key, master_id, intersections=False, extra_vars=extra_vars)
+                            relation_clazz, master_key, master_id, login, intersections=False,)
 
     result.update(data=slave_info.get('serializer')(queryset, many=True).data)
 
