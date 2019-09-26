@@ -2,7 +2,7 @@
 
 /venv
 
-/idenick_app/migrations
+/idenick_app/migrations/__pycache__
 
 /idenick_app/__pycache__
 /idenick_project/__pycache__
