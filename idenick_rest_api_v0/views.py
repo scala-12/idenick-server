@@ -887,53 +887,84 @@ def __get_report(request):
         end_date = datetime.strptime(
             end_time, "%Y%m%d") + timedelta(days=1, microseconds=-1)
 
-    employees_queryset = Employee.objects.all()
+    report_queryset = EmployeeRequest.objects.all()
     if login.role == Login.CONTROLLER:
-        employee_id_list = employees_queryset.values_list('id', flat=True)
-        employees_queryset = employees_queryset.filter(id__in=Employee2Organization.objects.filter(
-            organization_id=login.organization_id).filter(
-            employee_id__in=employee_id_list).values_list('employee', flat=True))
-
+        organization_filter = login.organization.id
     name = None
-    employees_ids = None
     if (entity_id is not None):
         if entity_type == ReportType.EMPLOYEE:
-            employees_ids = {entity_id}
             name = 'employee '
-        elif entity_type == ReportType.DEPARTMENT:
-            employees_ids = Employee.objects.filter(id__in=Employee2Department.objects.filter(
-                department_id=entity_id).values_list('employee_id', flat=True))
-            name = 'department '
-        elif entity_type == ReportType.ORGANIZATION:
-            employee_id_list = employees_queryset.values_list('id', flat=True)
-            employees_queryset = employees_queryset.filter(id__in=Employee2Organization.objects.filter(
-                organization_id=entity_id).filter(
-                employee_id__in=employee_id_list).values_list('employee', flat=True))
 
+            if (organization_filter is None) or Employee2Organization.objects.filter(employee_id=entity_id).filter(organization_id=organization_filter).exists():
+                report_queryset = report_queryset.filter(employee_id=entity_id)
+            else:
+                report_queryset = EmployeeRequest.objects.none()
+        elif entity_type == ReportType.DEPARTMENT:
+            name = 'department '
+
+            employees = Employee.objects.filter(id__in=Employee2Department.objects.filter(
+                department_id=entity_id).values_list('employee_id', flat=True))
+            report_queryset = report_queryset.filter(
+                employee__in=employees)
+        elif entity_type == ReportType.ORGANIZATION:
             name = 'organization '
+
+            if (organization_filter is None) or (organization_filter == entity_id):
+                employees = Employee2Organization.objects.filter(
+                    organization_id=entity_id).values_list('employee_id', flat=True)
+                devices_of_organization = Device2Organization.objects.filter(
+                    organization_id=entity_id).values_list('device_id', flat=True)
+                devices_of_device_groups = Device2DeviceGroup.objects.filter(device_group__in=DeviceGroup2Organization.objects.filter(
+                    organization_id=entity_id).values_list('device_group_id', flat=True))
+
+                devices = devices_of_organization.union(
+                    devices_of_device_groups)
+
+                reports = EmployeeRequest.objects.filter(
+                    employee_id__in=employees).values_list('id', flat=True).union(
+                    EmployeeRequest.objects.filter(
+                        device_id__in=devices).values_list('id', flat=True)
+                )
+
+                report_queryset = report_queryset.filter(id__in=reports)
+            else:
+                report_queryset = EmployeeRequest.objects.none()
+
         elif entity_type == ReportType.DEVICE:
-            employees_ids = EmployeeRequest.objects.filter(
-                device_id=entity_id).values_list('employee_id', flat=True)
-            device = Device.objects.get(id=entity_id)
             name = 'device '
+
+            if (organization_filter is None) or Device2Organization.objects.filter(device_id=entity_id).filter(organization_id=organization_filter).exists():
+                report_queryset = report_queryset.filter(device_id=entity_id)
+            else:
+                report_queryset = EmployeeRequest.objects.none()
+        elif entity_type == ReportType.DEVICE_GROUP:
+            name = 'device_groups '
+
+            if (organization_filter is None) or DeviceGroup2Organization.objects.filter(device_group_id=entity_id).filter(organization_id=organization_filter).exists():
+                devices = Device2DeviceGroup.objects.filter(
+                    device_group_id=entity_id).values_list('device_id', flat=True)
+
+                if (organization_filter is not None):
+                    devices_of_organization = Device2Organization.objects.filter(
+                        organization_id=organization_filter).values_list('device_id', flat=True)
+
+                    devices = set(devices).intersection(
+                        set(devices_of_organization))
+
+                report_queryset = report_queryset.filter(device_id__in=devices)
+            else:
+                report_queryset = EmployeeRequest.objects.none()
 
         name += str(entity_id)
     else:
         name = 'full'
 
-    if employees_ids is None:
-        employees_ids = set(employees_queryset.values_list('id', flat=True))
-
-    result = {}
-    report_queryset = EmployeeRequest.objects.filter(
-        employee_id__in=set(employees_ids)).order_by('-moment')
+    report_queryset = report_queryset.order_by('-moment')
 
     if start_date is not None:
         report_queryset = report_queryset.filter(moment__gte=start_date)
     if end_date is not None:
         report_queryset = report_queryset.filter(moment__lte=end_date)
-    if entity_type == 'device':
-        report_queryset = report_queryset.filter(device_id=entity_id)
 
     paginated_report_queryset = None
     if (page is None) or (perPage is None):
@@ -943,8 +974,7 @@ def __get_report(request):
         limit = offset + int(perPage) * int(page_count)
         paginated_report_queryset = report_queryset[offset:limit]
 
-    result.update(
-        {'queryset': paginated_report_queryset, 'name': name})
+    result = {'queryset': paginated_report_queryset, 'name': name}
     result.update(count=report_queryset.count())
 
     return result
