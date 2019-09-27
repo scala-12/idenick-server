@@ -11,7 +11,7 @@ urlpatterns = [
     path('api/v0/auth/', include('djoser.urls')),
     path('api/v0/auth/', include('djoser.urls.authtoken')),
     path('api/v0/', include('idenick_rest_api_v0.urls')),
-    re_path(r'^(?!static)(.+/)*$', TemplateView.as_view(template_name='index.html')),
+    re_path(r'^(?!static)(.+/?)*$', TemplateView.as_view(template_name='index.html')),
     url(r'^static/(?P<path>.*)$', serve,
         {'document_root': settings.STATIC_REACT_STATIC, 'show_indexes': settings.DEBUG}),
 ]
