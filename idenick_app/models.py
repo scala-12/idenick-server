@@ -170,8 +170,6 @@ class Device(_AbstractEntry4Old):
     description = models.CharField(max_length=500, blank=True)
     device_type = models.IntegerField(db_column='type', default=0)
     config = models.CharField(max_length=2000, blank=True)
-    device_group = models.ForeignKey(
-        'DeviceGroup', db_column='devicegroupsid', null=True, on_delete=models.CASCADE)
 
     def __str__(self):
         return self._str() + ('mqtt[%s] [%s] [%s] [%s] [%s] with config [%s]'
@@ -233,7 +231,7 @@ class Employee2Organization(_AbstractEntry4Old):
 class Device2DeviceGroup(_AbstractEntry4Old):
     """Model of relation between device and device group"""
     device_group = models.ForeignKey(
-        'DeviceGroup', db_column='devicegroupsid', related_name='devices', on_delete=models.CASCADE)
+        'DeviceGroup', db_column='devicegroupid', related_name='devices', on_delete=models.CASCADE)
     device = models.ForeignKey(
         'Device', db_column='devicesid', related_name='device_groups', on_delete=models.CASCADE)
 
@@ -242,6 +240,7 @@ class Device2DeviceGroup(_AbstractEntry4Old):
 
     class Meta:
         unique_together = (('device', 'device_group'),)
+        db_table = 'devices_devicegroup'
 
 
 class Device2Organization(_AbstractEntry4Old):
