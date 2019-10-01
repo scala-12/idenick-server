@@ -6,11 +6,9 @@ from rest_framework.routers import DefaultRouter
 from idenick_rest_api_v0.views import (ControllerViewSet, DepartmentViewSet,
                                        DeviceGroupViewSet, DeviceViewSet,
                                        EmployeeViewSet, OrganizationViewSet,
-                                       RegistratorViewSet, UserViewSet,
-                                       add_relation, get_counts,
-                                       get_current_user, get_non_related,
-                                       get_report, get_report_file,
-                                       remove_relation)
+                                       RegistratorViewSet, RelationsUtils,
+                                       ReportTools, UserViewSet, get_counts,
+                                       get_current_user)
 
 ROUTER = DefaultRouter()
 ROUTER.register(r'organizations', OrganizationViewSet, basename='Organization')
@@ -26,14 +24,14 @@ urlpatterns = ROUTER.urls
 
 urlpatterns += [
     path('currentUser/', get_current_user),
-    url('report/', get_report),
+    url('report/', ReportTools.get_report),
     url('counts/', get_counts),
-    url('reportFile/', get_report_file),
+    url('reportFile/', ReportTools.get_report_file),
 
     url(
-        '(?P<master_name>\\w+)/(?P<master_id>[0-9]+)/add(?P<slave_name>\\w+)s/', add_relation),
+        '(?P<master_name>\\w+)/(?P<master_id>[0-9]+)/add(?P<slave_name>\\w+)s/', RelationsUtils.add_relation),
     url(
-        '(?P<master_name>\\w+)/(?P<master_id>[0-9]+)/remove(?P<slave_name>\\w+)s/', remove_relation),
+        '(?P<master_name>\\w+)/(?P<master_id>[0-9]+)/remove(?P<slave_name>\\w+)s/', RelationsUtils.remove_relation),
     url(
-        '(?P<master_name>\\w+)/(?P<master_id>[0-9]+)/other(?P<slave_name>\\w+)s/', get_non_related),
+        '(?P<master_name>\\w+)/(?P<master_id>[0-9]+)/other(?P<slave_name>\\w+)s/', RelationsUtils.get_non_related),
 ]
