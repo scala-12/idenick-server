@@ -246,7 +246,7 @@ class OrganizationViewSet(_AbstractViewSet):
 
         return self._response(result)
 
-    @_LoginMethods.login_check_decorator(Login.ADMIN)
+    @_LoginMethods.login_check_decorator()
     def retrieve(self, request, pk=None):
         return self._retrieve(request, pk)
 
