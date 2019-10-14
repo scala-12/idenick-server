@@ -111,7 +111,16 @@ class DepartmentSerializers:
         employees_count = serializers.SerializerMethodField()
 
         def get_employees_count(self, obj):
-            return Employee2Department.objects.filter(department=obj).count()
+            queryset = Employee2Department.objects.filter(department=obj)
+
+            if 'organization' in self.context:
+                organization = self.context['organization']
+                if organization is not None:
+                    queryset = queryset.filter(
+                        employee_id__in=Employee2Organization.objects
+                        .filter(organization_id=organization).values_list('employee', flat=True))
+
+            return queryset.count()
 
         class Meta:
             model = Department
@@ -160,9 +169,21 @@ class EmployeeSerializers():
         """Serializer for show employee-model"""
 
         organizations_count = serializers.SerializerMethodField()
+        departments_count = serializers.SerializerMethodField()
 
         def get_organizations_count(self, obj):
             return Employee2Organization.objects.filter(employee_id=obj.id).count()
+
+        def get_departments_count(self, obj):
+            queryset = Employee2Department.objects.filter(employee_id=obj.id)
+
+            if 'organization' in self.context:
+                organization = self.context['organization']
+                if organization is not None:
+                    queryset = queryset.filter(
+                        department__organization=organization)
+
+            return queryset.count()
 
         class Meta:
             model = Employee
@@ -174,6 +195,7 @@ class EmployeeSerializers():
                 'first_name',
                 'patronymic',
                 'organizations_count',
+                'departments_count',
             ]
 
 
@@ -271,7 +293,17 @@ class DeviceGroupSerializers:
         organizations_count = serializers.SerializerMethodField()
 
         def get_devices_count(self, obj):
-            return Device2DeviceGroup.objects.filter(device_group_id=obj.id).count()
+            queryset = Device2DeviceGroup.objects.filter(
+                device_group_id=obj.id)
+
+            if 'organization' in self.context:
+                organization = self.context['organization']
+                if organization is not None:
+                    queryset = queryset.filter(
+                        device_id__in=Device2Organization.objects
+                        .filter(organization_id=organization).values_list('device', flat=True))
+
+            return queryset.count()
 
         def get_organizations_count(self, obj):
             return DeviceGroup2Organization.objects.filter(device_group_id=obj.id).count()
@@ -303,7 +335,7 @@ class DeviceSerializers:
                 'device_type',
                 'config',
             ]
-    
+
     class UpdateSerializer(serializers.ModelSerializer):
         """Serializer for update device-model"""
         class Meta:
@@ -322,7 +354,16 @@ class DeviceSerializers:
         organizations_count = serializers.SerializerMethodField()
 
         def get_device_groups_count(self, obj):
-            return Device2DeviceGroup.objects.filter(device_id=obj.id).count()
+            queryset = Device2DeviceGroup.objects.filter(device_id=obj.id)
+
+            if 'organization' in self.context:
+                organization = self.context['organization']
+                if organization is not None:
+                    queryset = queryset.filter(
+                        device_group_id__in=DeviceGroup2Organization.objects
+                        .filter(organization_id=organization).values_list('device_group', flat=True))
+
+            return queryset.count()
 
         def get_organizations_count(self, obj):
             return Device2Organization.objects.filter(device_id=obj.id).count()

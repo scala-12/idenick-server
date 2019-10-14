@@ -96,18 +96,22 @@ class _LoginMethods:
         return login is not None
 
 
-def _get_request_param(request, name, is_int=False, default=None):
-    param = request.GET.get(name, default)
+def _get_request_param(request, name, is_int=False, default=None, base_filter=False):
+    param = request.GET.get(('_' if base_filter else '') + name, default)
 
     result = None
-    if (param is not None) and (param != ''):
-        if is_int:
-            try:
-                result = int(param)
-            except ValueError:
-                pass
-        else:
-            result = param
+    if param is not None:
+        if param != '':
+            if is_int:
+                try:
+                    result = int(param)
+                except ValueError:
+                    pass
+            else:
+                result = param
+    elif not base_filter:
+        result = _get_request_param(
+            request, name, is_int=is_int, default=default, base_filter=True)
 
     return result
 
@@ -117,18 +121,39 @@ class ErrorMessage(Enum):
 
 
 class _AbstractViewSet(viewsets.ViewSet):
+    _serializer_classes = None
+    _object_type = None
 
-    def _response(self, data, status=status.HTTP_200_OK):
-        return Response(data, headers={'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'}, status=status)
+    def _get_queryset(self, request):
+        pass
+
+    def _get_count_all(self, request):
+        return self._object_type.objects.all().count()
+
+    def _response(self, data, status_value=status.HTTP_200_OK):
+        return Response(
+            data,
+            headers={'Access-Control-Allow-Origin': '*',
+                     'Content-Type': 'application/json'},
+            status=status_value)
 
     def _response4update_n_create(self, code=status.HTTP_200_OK, data=None, message=None):
         result = None
-        if (data is None):
-            result = Response({'message': message, 'success': False}, headers={'Access-Control-Allow-Origin': '*',
-                                                                               'Content-Type': 'application/json'}, status=(status.HTTP_400_BAD_REQUEST if (code == status.HTTP_200_OK) else code))
+        if data is None:
+            result = Response(
+                {'message': message, 'success': False},
+                headers={'Access-Control-Allow-Origin': '*',
+                         'Content-Type': 'application/json'},
+                status=(status.HTTP_400_BAD_REQUEST if (code == status.HTTP_200_OK) else code))
         else:
-            result = Response({'data': self._serializer_classes.get('retrieve')(data).data, 'success': True}, headers={
-                              'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'}, status=code)
+            result = Response(
+                {
+                    'data': self._serializer_classes.get('retrieve')(data).data,
+                    'success': True
+                },
+                headers={'Access-Control-Allow-Origin': '*',
+                         'Content-Type': 'application/json'},
+                status=code)
         return result
 
     def get_serializer_class(self):
@@ -137,17 +162,40 @@ class _AbstractViewSet(viewsets.ViewSet):
     def _list_data(self, request, queryset=None):
         _queryset = self._get_queryset(request) if (
             queryset is None) else queryset
-        serializer = self.get_serializer_class()(_queryset, many=True)
-        return {'data': serializer.data}
+
+        page = _get_request_param(request, 'page', True)
+        per_page = _get_request_param(request, 'perPage', True)
+
+        if (page is not None) and (per_page is not None):
+            offset = page * per_page
+            limit = offset + per_page
+            _queryset = _queryset[offset:limit]
+
+        organization = None
+        login = _LoginMethods.get_login(request.user)
+        if ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
+            organization = login.organization_id
+
+        serializer = self.get_serializer_class()(_queryset, many=True, context={
+            'organization': organization})
+
+        return {'data': serializer.data, 'count': self._get_count_all(request)}
 
     def _retrieve(self, request, pk=None, queryset=None):
         return self._response(self._retrieve_data(request, pk, queryset))
 
-    def _retrieve_data(self, request, pk=None, queryset=None):
+    def _retrieve_data(self, request, pk, queryset=None):
         _queryset = self._get_queryset(request) if (
             queryset is None) else queryset
         entity = get_object_or_404(_queryset, pk=pk)
-        serializer = self.get_serializer_class()(entity)
+
+        organization = None
+        login = _LoginMethods.get_login(request.user)
+        if ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
+            organization = login.organization_id
+        serializer = self.get_serializer_class()(entity, context={
+            'organization': organization})
+
         return {'data': serializer.data}
 
     def _get_validation_error_msg(self, errors, object_class, update_verbose=True):
@@ -158,10 +206,12 @@ class _AbstractViewSet(viewsets.ViewSet):
             for err in errors.get(field):
                 sub_msg = None
                 if (field == 'non_field_errors'):
-                    if (err.code == 'unique') and ((object_class == Department) or (object_class == Device)):
+                    if (err.code == 'unique') \
+                            and ((object_class == Department) or (object_class == Device)):
                         err_prefix = 'Название: '
                         sub_msg = ('Подразделение' if (
-                            object_class == Department) else 'Прибор') + ' с таким названием уже существует'
+                            object_class == Department) else 'Прибор') \
+                            + ' с таким названием уже существует'
                     else:
                         sub_msg = err.capitalize()
                 else:
@@ -196,7 +246,7 @@ class _AbstractViewSet(viewsets.ViewSet):
     def _validate_on_update(self, pk, serializer_class, Object_class, data, extra=None):
         update = None
         serializer = serializer_class(data=data)
-        if (serializer.is_valid()):
+        if serializer.is_valid():
             update = Object_class(**serializer.data)
         elif self._alternative_valid(pk, data, serializer.errors, extra):
             serializer = serializer_class(data)
@@ -213,8 +263,10 @@ class OrganizationViewSet(_AbstractViewSet):
         'partial_update': OrganizationSerializers.CreateSerializer,
     }
 
+    _object_type = Organization
+
     def _get_queryset(self, request):
-        queryset = Organization.objects.all()
+        queryset = self._object_type.objects.all()
 
         name_filter = _get_request_param(request, 'name')
         if name_filter is not None:
@@ -290,11 +342,13 @@ class OrganizationViewSet(_AbstractViewSet):
         return result
 
     def _alternative_valid(self, pk, data, errors, extra):
-        return (len(errors.keys()) == 1) and errors.keys().__contains__('name') and (errors.get('name')[0].code == 'unique') and not Organization.objects.filter(name=data.get('name')).filter(~Q(id=pk)).exists()
+        return (len(errors.keys()) == 1) \
+            and errors.keys().__contains__('name') \
+            and (errors.get('name')[0].code == 'unique') \
+            and not Organization.objects.filter(name=data.get('name')).filter(~Q(id=pk)).exists()
 
 
 class DepartmentViewSet(_AbstractViewSet):
-
     _serializer_classes = {
         'list': DepartmentSerializers.ModelSerializer,
         'retrieve': DepartmentSerializers.ModelSerializer,
@@ -302,11 +356,29 @@ class DepartmentViewSet(_AbstractViewSet):
         'partial_update': DepartmentSerializers.CreateSerializer,
     }
 
+    _object_type = Department
+
+    def _get_count_all(self, request):
+        queryset = self._object_type.objects.all()
+
+        login = _LoginMethods.get_login(request.user)
+        if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
+            queryset = queryset.filter(organization=login.organization_id)
+
+        employee_filter = _get_request_param(
+            request, 'employee', True, base_filter=True)
+        if employee_filter is not None:
+            queryset = queryset.filter(
+                id__in=Employee2Department.objects.filter(
+                    employee_id=employee_filter).values_list('department', flat=True))
+
+        return queryset.count()
+
     def _get_queryset(self, request):
         login = _LoginMethods.get_login(request.user)
         queryset = None
         role = login.role
-        if (role == Login.ADMIN):
+        if role == Login.ADMIN:
             queryset = Department.objects.all()
         elif (role == Login.CONTROLLER) or (role == Login.REGISTRATOR):
             queryset = Department.objects.filter(
@@ -404,7 +476,12 @@ class DepartmentViewSet(_AbstractViewSet):
         return result
 
     def _alternative_valid(self, pk, data, errors, extra):
-        return (len(errors.keys()) == 1) and errors.keys().__contains__('non_field_errors') and (errors.get('non_field_errors')[0].code == 'unique') and not Department.objects.filter(Q(name=data.get('name')) & Q(organization_id=extra.get('organization'))).filter(~Q(id=pk)).exists()
+        return (len(errors.keys()) == 1) \
+            and errors.keys().__contains__('non_field_errors') \
+            and (errors.get('non_field_errors')[0].code == 'unique') \
+            and not Department.objects.filter(Q(name=data.get('name'))
+                                              & Q(organization_id=extra.get('organization'))) \
+            .filter(~Q(id=pk)).exists()
 
 
 class EmployeeViewSet(_AbstractViewSet):
@@ -414,6 +491,32 @@ class EmployeeViewSet(_AbstractViewSet):
         'create': EmployeeSerializers.CreateSerializer,
         'partial_update': EmployeeSerializers.CreateSerializer,
     }
+
+    _object_type = Employee
+
+    def _get_count_all(self, request):
+        queryset = self._object_type.objects.all()
+
+        organization_filter = _get_request_param(
+            request, 'organization', True, base_filter=True)
+
+        login = _LoginMethods.get_login(request.user)
+        if (organization_filter is None) \
+                and ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
+            organization_filter = login.organization_id
+
+        department_filter = _get_request_param(
+            request, 'department', True, base_filter=True)
+        if department_filter is not None:
+            queryset = queryset.filter(
+                id__in=Employee2Department.objects.filter(
+                    department_id=department_filter).values_list('employee', flat=True))
+
+        if organization_filter is not None:
+            queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
+                organization=organization_filter).values_list('employee', flat=True))
+
+        return queryset.count()
 
     def _get_queryset(self, request):
         login = _LoginMethods.get_login(request.user)
@@ -529,6 +632,23 @@ class _UserViewSet(_AbstractViewSet):
         'create': LoginSerializer.CreateSerializer,
         'partial_update': LoginSerializer.UpdateSerializer,
     }
+
+    _object_type = Login
+
+    def _get_count_all(self, request):
+        queryset = Login.objects.filter(role=self._user_role(request))
+
+        organization_filter = _get_request_param(
+            request, 'organization', True, base_filter=True)
+
+        login = _LoginMethods.get_login(request.user)
+        if (organization_filter is None) and (login.role == Login.REGISTRATOR):
+            organization_filter = login.organization_id
+
+        if organization_filter is not None:
+            queryset = queryset.filter(organization=organization_filter)
+
+        return queryset.count()
 
     def _user_role(self, request):
         return Login.REGISTRATOR if (_LoginMethods.get_login(request.user).role == Login.ADMIN) \
@@ -683,6 +803,31 @@ class DeviceViewSet(_AbstractViewSet):
         'partial_update': DeviceSerializers.UpdateSerializer,
     }
 
+    _object_type = Device
+
+    def _get_count_all(self, request):
+        queryset = self._object_type.objects.all()
+
+        organization_filter = _get_request_param(
+            request, 'organization', True, base_filter=True)
+
+        login = _LoginMethods.get_login(request.user)
+        if (organization_filter is None) \
+                and ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
+            organization_filter = login.organization_id
+
+        device_group_filter = _get_request_param(
+            request, 'deviceGroup', True, base_filter=True)
+        if device_group_filter is not None:
+            queryset = queryset.filter(id__in=Device2DeviceGroup.objects.filter(
+                device_group_id=device_group_filter).values_list('device', flat=True))
+
+        if organization_filter is not None:
+            queryset = queryset.filter(id__in=Device2Organization.objects.filter(
+                organization=organization_filter).values_list('device', flat=True))
+
+        return queryset.count()
+
     def _get_queryset(self, request):
         login = _LoginMethods.get_login(request.user)
 
@@ -794,6 +939,32 @@ class DeviceGroupViewSet(_AbstractViewSet):
         'create': DeviceGroupSerializers.CreateSerializer,
         'partial_update': DeviceGroupSerializers.CreateSerializer,
     }
+
+    _object_type = DeviceGroup
+
+    def _get_count_all(self, request):
+        queryset = DeviceGroup.objects.all()
+
+        device_filter = _get_request_param(
+            request, 'device', True, base_filter=True)
+        if device_filter is not None:
+            queryset = queryset.filter(id__in=Device2DeviceGroup.objects.
+                                       filter(device_id=device_filter)
+                                       .values_list('device_group', flat=True))
+
+        organization_filter = _get_request_param(
+            request, 'organization', True, base_filter=True)
+
+        login = _LoginMethods.get_login(request.user)
+        if (organization_filter is None) \
+                and ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
+            organization_filter = login.organization_id
+
+        if organization_filter is not None:
+            queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
+                organization=organization_filter).values_list('device_group', flat=True))
+
+        return queryset.count()
 
     def _get_queryset(self, request):
         queryset = DeviceGroup.objects.all()
@@ -1254,8 +1425,10 @@ class RelationsUtils:
 
     @staticmethod
     def _add_or_remove_relations(request, master_name, master_id, slave_name, adding_mode=True):
-        master_info = RelationsUtils._get_clazz_n_serializer_by_entry_name(master_name, True)
-        slave_info = RelationsUtils._get_clazz_n_serializer_by_entry_name(slave_name)
+        master_info = RelationsUtils._get_clazz_n_serializer_by_entry_name(
+            master_name, True)
+        slave_info = RelationsUtils._get_clazz_n_serializer_by_entry_name(
+            slave_name)
 
         master_clazz = master_info.get('clazz')
         slave_clazz = slave_info.get('clazz')
@@ -1266,7 +1439,8 @@ class RelationsUtils:
 
         master_key = master_info.get('key')
         slave_key = slave_info.get('key')
-        relation_clazz = RelationsUtils._get_relation_clazz(master_clazz, slave_clazz)
+        relation_clazz = RelationsUtils._get_relation_clazz(
+            master_clazz, slave_clazz)
 
         exists_ids = RelationsUtils.get_relates(slave_clazz, slave_key, relation_clazz,
                                                 master_key, master_id, login).values_list('id', flat=True)
@@ -1306,8 +1480,10 @@ class RelationsUtils:
     def get_non_related(request, master_name, master_id, slave_name):
         result = {}
 
-        master_info = RelationsUtils._get_clazz_n_serializer_by_entry_name(master_name, True)
-        slave_info = RelationsUtils._get_clazz_n_serializer_by_entry_name(slave_name)
+        master_info = RelationsUtils._get_clazz_n_serializer_by_entry_name(
+            master_name, True)
+        slave_info = RelationsUtils._get_clazz_n_serializer_by_entry_name(
+            slave_name)
 
         master_key = master_info.get('key')
         slave_key = slave_info.get('key')
