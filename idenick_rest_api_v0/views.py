@@ -1,9 +1,19 @@
+import base64
+import binascii
+
+import os
+import io
+from PIL import Image
+from array import array
+
 import io
 from abc import abstractmethod
 from datetime import datetime, timedelta
 from enum import Enum
 from functools import wraps
+from time import sleep
 
+import paho.mqtt.client as mqtt
 import xlsxwriter
 from django.contrib.auth.decorators import user_passes_test
 from django.contrib.auth.models import User
@@ -1498,3 +1508,84 @@ class RelationsUtils:
                       (queryset, many=True).data)
 
         return Response(result)
+
+
+class MqttUtils:
+    USE_SSL = False
+    USERNAME = None
+    PASSWORD = None
+    CLEAN_SESSION = True
+    HOST = 'tgu.idenick.ru'
+    PORT = 1883
+    SUBSCRIBE_TOPIC_THREAD = '/BIOID/CLOUD/'
+    PUBLISH_TOPIC_THREAD = '/BIOID/CLIENT/'
+    PATH = '/mqtt'
+
+    @staticmethod
+    def _on_connect(mqtt_id, client, userdata, flags, rc):
+        print("Connected to [%s]:[%s][%s] with result code [%s]" % (
+            MqttUtils.HOST, MqttUtils.PORT, MqttUtils.PATH, str(rc)))
+        client.subscribe(MqttUtils.PUBLISH_TOPIC_THREAD + mqtt_id, qos=0)
+
+    @staticmethod
+    def on_message(last_payload, client, userdata, msg):
+        payload_str = msg.payload.decode('utf-8')
+        print(msg.topic + " " + payload_str)
+        last_payload.update(count=(last_payload.get('count') + 1))
+
+        if 'FACE_SEARCH' in payload_str:
+            last_payload.update(photo_data=msg.payload[16:])
+            last_payload.update(msg=payload_str[:20])
+        else:
+            last_payload.update(msg=payload_str)
+
+    @staticmethod
+    def on_publish(client, userdata, result):  # create function for callback
+        print("data published \n")
+        pass
+
+    @staticmethod
+    def on_disconnect(client, userdata, rc):
+        print("client disconnected ok")
+
+    @staticmethod
+    @api_view(['GET'])
+    def make_photo(request, device_id):
+        device = get_object_or_404(Device.objects.all(), pk=device_id)
+
+        client = mqtt.Client(clean_session=True, transport="tcp")
+        client.on_connect = lambda client, userdata, flags, rc: \
+            MqttUtils._on_connect(device.mqtt,
+                                  client, userdata, flags, rc)
+        last_payload = {'msg': None, 'count': 0, 'photo': None}
+        client.on_message = lambda client, userdata, rc: MqttUtils.on_message(
+            last_payload, client, userdata, rc)
+        client.on_publish = MqttUtils.on_publish
+        client.on_disconnect = MqttUtils.on_disconnect
+
+        client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+
+        publish_topic = MqttUtils.PUBLISH_TOPIC_THREAD + device.mqtt
+        subscribe_topic = MqttUtils.SUBSCRIBE_TOPIC_THREAD + device.mqtt
+
+        client.loop_start()
+        client.publish(publish_topic, "!MakePhoto")
+        client.publish(subscribe_topic, "!MakePhoto")
+
+        while (last_payload.get('photo_data') is None) and (last_payload.get('count') < 5):
+            client.loop()
+            sleep(1)
+
+        client.loop_stop()
+
+        data = {'photo_data': None}
+        if last_payload.get('photo_data') is not None:
+            photo_data = last_payload.get('photo_data')
+
+            with open('d:/Users/vlad/Downloads/FACEID_MON/photo1.bmp', 'wb') as output:
+                output.write(photo_data)
+
+
+            data.update(photo=photo_data)
+
+        return Response({'data': data})
