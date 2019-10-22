@@ -263,13 +263,13 @@ class EmployeeRequest(models.Model):
     moment = models.DateTimeField(db_column='stamp', auto_now_add=True)
     request_type = models.IntegerField(db_column='request', default=0)
     response_type = models.IntegerField(db_column='result', default=0)
-    description = models.CharField(max_length=500, blank=True)
+    description = models.CharField(max_length=500, blank=True, null=True)
     algorithm_type = models.IntegerField(db_column='algorithm', default=0)
     employee = models.ForeignKey(
         'Employee', db_column='usersid', on_delete=models.CASCADE, null=True, default=None)
     device = models.ForeignKey(
         'Device', db_column='devicesid', on_delete=models.CASCADE, null=True, default=None)
-    templatesid = models.IntegerField(default=0)
+    templatesid = models.IntegerField(default=0, null=True)
 
     def __str__(self):
         return ('id[%s] [%s] with [%s] in [%s] do [%s] with result [%s] (%s)'
