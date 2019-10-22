@@ -8,7 +8,7 @@ from idenick_rest_api_v0.views import (ControllerViewSet, DepartmentViewSet,
                                        EmployeeViewSet, OrganizationViewSet,
                                        RegistratorViewSet, RelationsUtils,
                                        ReportTools, UserViewSet, get_counts,
-                                       get_current_user)
+                                       get_current_user, MqttUtils)
 
 ROUTER = DefaultRouter()
 ROUTER.register(r'organizations', OrganizationViewSet, basename='Organization')
@@ -34,4 +34,8 @@ urlpatterns += [
         '(?P<master_name>\\w+)/(?P<master_id>[0-9]+)/remove(?P<slave_name>\\w+)s/', RelationsUtils.remove_relation),
     url(
         '(?P<master_name>\\w+)/(?P<master_id>[0-9]+)/other(?P<slave_name>\\w+)s/', RelationsUtils.get_non_related),
+    url(
+        'devices/(?P<device_id>[0-9]+)/makePhoto/', MqttUtils.make_photo),
+    url(
+        'employees/(?P<employee_id>[0-9]+)/savePhoto/', MqttUtils.registrate_photo),
 ]

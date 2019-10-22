@@ -9,6 +9,7 @@
    ```
 1. Дополнение для создания Excel-файлов `pip install XlsxWriter`
 1. Библиотеки для работы с *MySQL* - `pip install mysql-connector-python`
+1. Библиотека для работы с MQTT - `pip install paho-mqtt`
 
 ## Первоначальная БД (возможно, неактуально)
 1. Создание базы через *mysql* и настройка доступов к ней (*/idenick_project/settings.py*)

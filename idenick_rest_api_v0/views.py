@@ -1,9 +1,13 @@
+import base64
 import io
+import json
 from abc import abstractmethod
 from datetime import datetime, timedelta
 from enum import Enum
 from functools import wraps
+from time import sleep
 
+import paho.mqtt.client as mqtt
 import xlsxwriter
 from django.contrib.auth.decorators import user_passes_test
 from django.contrib.auth.models import User
@@ -1496,5 +1500,130 @@ class RelationsUtils:
 
         result.update(data=slave_info.get('serializer')
                       (queryset, many=True).data)
+
+        return Response(result)
+
+
+class MqttUtils:
+    USE_SSL = False
+    USERNAME = None
+    PASSWORD = None
+    CLEAN_SESSION = True
+    HOST = 'tgu.idenick.ru'
+    PORT = 1883
+    SUBSCRIBE_TOPIC_THREAD = '/BIOID/CLOUD/'
+    PUBLISH_TOPIC_THREAD = '/BIOID/CLIENT/'
+    PATH = '/mqtt'
+
+    @staticmethod
+    def _on_connect(client, userdata, flags, rc):
+        print("Connected to [%s]:[%s][%s] with result code [%s]" % (
+            MqttUtils.HOST, MqttUtils.PORT, MqttUtils.PATH, str(rc)))
+
+    @staticmethod
+    def _on_message(client, userdata, msg, payloads_info=None):
+        payload_str = str(msg.payload)
+        print(msg.topic + " " + payload_str)
+
+        if payloads_info is not None:
+            payloads_info.update(count=(payloads_info.get('count') + 1))
+            payloads_info.update(msg_list=payloads_info.get(
+                'msg_list') + [payload_str])
+
+    @staticmethod
+    @api_view(['POST'])
+    def registrate_photo(request, employee_id):
+        employee = get_object_or_404(Employee.objects.all(), pk=employee_id)
+        photo_b64 = request.POST.get('photo')
+
+        mqtt_command = ('!FACE_ENROLL,0,%s,%s,%s\r\n' % (
+            employee.last_name, employee.first_name, employee.patronymic, )) + str(base64.b64decode(photo_b64))[2:-1]
+        # mqtt_command = '!FACE_ENROLL,0,калашников,владислав,вячеславович\n' + \
+        #     str(base64.b64decode(photo_b64))[2:-1]
+
+        payloads_info = {'msg_list': [], 'count': 0}
+
+        def message_callback(client, userdata, msg):
+            MqttUtils._on_message(client, userdata, msg, payloads_info)
+
+        client = mqtt.Client(clean_session=True, transport="tcp")
+        client.on_connect = MqttUtils._on_connect
+        client.on_message = message_callback
+
+        # client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+
+        # client.loop_start()
+
+        # client.publish(MqttUtils.PUBLISH_TOPIC_THREAD, mqtt_command)
+        # client.publish(MqttUtils.SUBSCRIBE_TOPIC_THREAD, mqtt_command)
+
+        return Response({'success': False})
+
+    @staticmethod
+    @api_view(['GET'])
+    def make_photo(request, device_id):
+        device = get_object_or_404(Device.objects.all(), pk=device_id)
+
+        publish_topic = MqttUtils.PUBLISH_TOPIC_THREAD + device.mqtt
+        subscribe_topic = MqttUtils.SUBSCRIBE_TOPIC_THREAD + device.mqtt
+
+        def connect_callback(client, userdata, flags, rc):
+            MqttUtils._on_connect(client, userdata, flags, rc)
+
+            client.subscribe(subscribe_topic, qos=0)
+            client.subscribe(publish_topic, qos=0)
+
+        payloads_info = {'msg_list': [], 'count': 0}
+        photo_payload = {'data': None, 'success': None, 'msg': None}
+
+        def message_callback(client, userdata, msg):
+            MqttUtils._on_message(client, userdata, msg, payloads_info)
+
+            payload_str = str(msg.payload)
+            if 'FACE_SEARCH' in payload_str:
+                photo_payload.update(data=msg.payload[16:])
+            elif 'ERROR' in payload_str:
+                if 'System.NullReferenceException' in payload_str:
+                    photo_payload.update(success=True)
+                else:
+                    photo_payload.update(success=False)
+                    photo_payload.update(msg=msg.payload[9:-2].decode('utf-8'))
+
+        client = mqtt.Client(clean_session=True, transport="tcp")
+        client.on_connect = connect_callback
+        client.on_message = message_callback
+
+        client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+
+        client.loop_start()
+        client.publish(publish_topic, "!MakePhoto")
+        client.publish(subscribe_topic, "!MakePhoto")
+
+        equals_counts = 0
+        prev_loop_count = 0
+        while (equals_counts < 4) and (payloads_info.get('count') < 8) and (photo_payload.get('success') is None):
+            client.loop()
+            sleep(1)
+            if prev_loop_count == payloads_info.get('count'):
+                equals_counts += 1
+            else:
+                prev_loop_count = payloads_info.get('count')
+
+        client.loop_stop()
+
+        data = {'photo_b64': None}
+        result = {'success': None, 'msg': None}
+        if photo_payload.get('success') is not None:
+            photo_data = photo_payload.get('data')
+            photo_b64 = base64.b64encode(photo_data)
+
+            data.update(photo_b64=photo_b64)
+            result.update(success=photo_payload.get('success'))
+            result.update(msg=photo_payload.get('msg'))
+        else:
+            data.update(success=False)
+
+        client.disconnect()
+        result.update(data=data)
 
         return Response(result)
