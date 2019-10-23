@@ -1574,20 +1574,32 @@ class MqttUtils:
             client.subscribe(publish_topic, qos=0)
 
         payloads_info = {'msg_list': [], 'count': 0}
-        photo_payload = {'data': None, 'success': None, 'msg': None}
+        photo_payload = {'data': None, 'success': None,
+                         'msg': None, 'employee': None}
 
         def message_callback(client, userdata, msg):
             MqttUtils._on_message(client, userdata, msg, payloads_info)
 
             payload_str = str(msg.payload)
-            if 'FACE_SEARCH' in payload_str:
+            if '!FACE_SEARCH,' in payload_str:
                 photo_payload.update(data=msg.payload[16:])
-            elif 'ERROR' in payload_str:
+            elif '!ERROR,' in payload_str:
                 if 'System.NullReferenceException' in payload_str:
                     photo_payload.update(success=True)
                 else:
                     photo_payload.update(success=False)
                     photo_payload.update(msg=msg.payload[9:-2].decode('utf-8'))
+            elif '!SEARCH_OK,' in payload_str:
+                photo_payload.update(success=False)
+                search_ok_msg = msg.payload[13:].decode('utf-8').split(',')
+
+                employee = Employee.objects.get(
+                    last_name=search_ok_msg[0], first_name=search_ok_msg[1],
+                    patronymic=search_ok_msg[2])
+
+                photo_payload.update(msg='Пользователь существует')
+                photo_payload.update(
+                    employee={employee.id: ' '.join(search_ok_msg[0:3])})
 
         client = mqtt.Client(clean_session=True, transport="tcp")
         client.on_connect = connect_callback
@@ -1620,6 +1632,7 @@ class MqttUtils:
             data.update(photo_b64=photo_b64)
             result.update(success=photo_payload.get('success'))
             result.update(msg=photo_payload.get('msg'))
+            result.update(employee=photo_payload.get('employee'))
         else:
             data.update(success=False)
 
