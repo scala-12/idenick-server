@@ -1,6 +1,8 @@
 import base64
 import io
 import json
+import socket
+import struct
 from abc import abstractmethod
 from datetime import datetime, timedelta
 from enum import Enum
@@ -659,8 +661,9 @@ class _UserViewSet(_AbstractViewSet):
             else Login.CONTROLLER
 
     def _get_queryset(self, request):
-        queryset = self._object_type.objects.filter(dropped_at=None).filter(role=self._user_role(request))
-        
+        queryset = self._object_type.objects.filter(
+            dropped_at=None).filter(role=self._user_role(request))
+
         login = _LoginMethods.get_login(request.user)
         if login.role == Login.REGISTRATOR:
             queryset = queryset.filter(organization__id=login.organization_id)
@@ -1594,13 +1597,17 @@ class MqttUtils:
                 photo_payload.update(success=False)
                 search_ok_msg = msg.payload[13:].decode('utf-8').split(',')
 
-                employee = Employee.objects.get(
+                employee = Employee.objects.filter(
                     last_name=search_ok_msg[0], first_name=search_ok_msg[1],
                     patronymic=search_ok_msg[2])
 
-                photo_payload.update(msg='Пользователь существует')
-                photo_payload.update(
-                    employee={employee.id: ' '.join(search_ok_msg[0:3])})
+                if employee.exists():
+                    photo_payload.update(msg='Пользователь существует')
+                    photo_payload.update(
+                        employee={employee.first().id: ' '.join(search_ok_msg[0:3])})
+                else:
+                    photo_payload.update(
+                        msg='Пользователь существует, но не найден (' + ' '.join(search_ok_msg[0:3]) + ')')
 
         client = mqtt.Client(clean_session=True, transport="tcp")
         client.on_connect = connect_callback
@@ -1614,8 +1621,15 @@ class MqttUtils:
 
         equals_counts = 0
         prev_loop_count = 0
+        with_error = False
         while (equals_counts < 4) and (payloads_info.get('count') < 8) and (photo_payload.get('success') is None):
-            client.loop()
+            try:
+                client.loop()
+                with_error = False
+            except socket.error | struct.error:
+                print("Loop error")
+                client.reconnect()
+                with_error = True
             sleep(1)
             if prev_loop_count == payloads_info.get('count'):
                 equals_counts += 1
@@ -1623,9 +1637,10 @@ class MqttUtils:
                 prev_loop_count = payloads_info.get('count')
 
         client.loop_stop()
+        client.disconnect()
 
-        data = {'photo_b64': None}
         result = {'success': None, 'msg': None}
+        data = {'photo_b64': None}
         if photo_payload.get('success') is not None:
             photo_data = photo_payload.get('data')
             photo_b64 = base64.b64encode(photo_data)
@@ -1635,9 +1650,10 @@ class MqttUtils:
             result.update(msg=photo_payload.get('msg'))
             result.update(employee=photo_payload.get('employee'))
         else:
+            if with_error:
+                result.update(msg='Ошибка подключения к устройству')
             data.update(success=False)
 
-        client.disconnect()
         result.update(data=data)
 
         return Response(result)
