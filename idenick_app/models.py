@@ -66,8 +66,8 @@ class Organization(_AbstractEntry4Old):
                             default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=250, unique=True,
                             verbose_name='название')
-    address = models.CharField(max_length=500, blank=True)
-    phone = models.CharField(max_length=50, blank=True)
+    address = models.CharField(max_length=500, blank=True, null=True,)
+    phone = models.CharField(max_length=50, blank=True, null=True,)
 
     def __str__(self):
         return self._str() + ('[%s] address[%s] phone[%s]' % (self.name, self.address, self.phone))
@@ -84,8 +84,8 @@ class Department(_AbstractEntry4Old):
         'Organization', db_column='companyid', related_name='departments', on_delete=models.CASCADE)
     name = models.CharField(max_length=64)
     rights = models.IntegerField(default=0)
-    address = models.CharField(max_length=500, blank=True)
-    description = models.CharField(max_length=500, blank=True)
+    address = models.CharField(max_length=500, blank=True, null=True,)
+    description = models.CharField(max_length=500, blank=True, null=True,)
 
     def __str__(self):
         return self._str() + ('organization[%s] [%s] with right[%s] address[%s] (%s)'
@@ -167,9 +167,9 @@ class Device(_AbstractEntry4Old):
     """Device model"""
     mqtt = models.CharField(max_length=255, db_column='mqttid', unique=True,)
     name = models.CharField(max_length=64, verbose_name='название')
-    description = models.CharField(max_length=500, blank=True)
+    description = models.CharField(max_length=500, blank=True, null=True,)
     device_type = models.IntegerField(db_column='type', default=0)
-    config = models.CharField(max_length=2000, blank=True)
+    config = models.CharField(max_length=2000, blank=True, null=True,)
 
     def __str__(self):
         return self._str() + ('mqtt[%s] [%s] [%s] [%s] [%s] with config [%s]'
@@ -188,7 +188,7 @@ class DeviceGroup(_AbstractEntry4Old):
     name = models.CharField(max_length=64, unique=True,
                             verbose_name='название проходной', )
     rights = models.IntegerField(default=0)
-    description = models.CharField(max_length=500, blank=True)
+    description = models.CharField(max_length=500, blank=True, null=True,)
 
     def __str__(self):
         return self._str() + ('[%s] [%s] with rigth [%s]' % (self.name, self.description,
