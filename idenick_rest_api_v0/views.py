@@ -662,8 +662,7 @@ class _UserViewSet(_AbstractViewSet):
             else Login.CONTROLLER
 
     def _get_queryset(self, request):
-        queryset = self._object_type.objects.filter(
-            dropped_at=None).filter(role=self._user_role(request))
+        queryset = self._object_type.objects.filter(role=self._user_role(request))
 
         login = _LoginMethods.get_login(request.user)
         if login.role == Login.REGISTRATOR:
@@ -678,8 +677,7 @@ class _UserViewSet(_AbstractViewSet):
 
     @_LoginMethods.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def list(self, request):
-        queryset = self._get_queryset(
-            request)
+        queryset = self._get_queryset(request)
         name_filter = _get_request_param(request, 'name')
         users_ids = None
         if name_filter is not None:
