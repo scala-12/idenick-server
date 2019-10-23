@@ -1,13 +1,13 @@
 import base64
 import io
 import json
-from threading import Thread
 import socket
 import struct
 from abc import abstractmethod
 from datetime import datetime, timedelta
 from enum import Enum
 from functools import wraps
+from threading import Thread
 from time import sleep
 
 import paho.mqtt.client as mqtt
@@ -1526,6 +1526,10 @@ class MqttUtils:
             MqttUtils.HOST, MqttUtils.PORT, MqttUtils.PATH, str(rc)))
 
     @staticmethod
+    def _on_disconnect():
+        print("connection lost")
+
+    @staticmethod
     def _on_message(client, userdata, msg, payloads_info=None):
         payload_str = str(msg.payload)
         print(msg.topic + " " + payload_str)
@@ -1593,9 +1597,8 @@ class MqttUtils:
                         with_error = False
                     except socket.error | struct.error:
                         print("Loop error 1")
-                        client.reconnect()
                         with_error = True
-                except AttributeError | socket.error | struct.error:
+                except TypeError | AttributeError | socket.error | struct.error:
                     print("Loop error 2")
                 sleep(1)
                 if prev_loop_count == payloads_info.get('count'):
@@ -1632,9 +1635,16 @@ class MqttUtils:
                     photo_payload.update(
                         msg='Пользователь существует, но не найден (' + ' '.join(search_ok_msg[0:3]) + ')')
 
+        def disconnect_callback(client):
+            MqttUtils._on_disconnect()
+            sleep(1)
+            client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+
         client = mqtt.Client(clean_session=True, transport="tcp")
         client.on_connect = connect_callback
         client.on_message = message_callback
+
+        client.on_disconnect = MqttUtils._on_connect
 
         try:
             client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
