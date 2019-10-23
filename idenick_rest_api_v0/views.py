@@ -270,7 +270,7 @@ class OrganizationViewSet(_AbstractViewSet):
     _object_type = Organization
 
     def _get_queryset(self, request):
-        queryset = self._object_type.objects.all()
+        queryset = self._object_type.objects.filter(dropped_at=None)
 
         name_filter = _get_request_param(request, 'name')
         if name_filter is not None:
@@ -380,12 +380,10 @@ class DepartmentViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request):
         login = _LoginMethods.get_login(request.user)
-        queryset = None
+        queryset = self._object_type.objects.filter(dropped_at=None)
         role = login.role
-        if role == Login.ADMIN:
-            queryset = Department.objects.all()
-        elif (role == Login.CONTROLLER) or (role == Login.REGISTRATOR):
-            queryset = Department.objects.filter(
+        if (role == Login.CONTROLLER) or (role == Login.REGISTRATOR):
+            queryset = queryset.filter(
                 organization_id=login.organization_id)
 
         name_filter = _get_request_param(request, 'name')
@@ -523,10 +521,9 @@ class EmployeeViewSet(_AbstractViewSet):
         return queryset.count()
 
     def _get_queryset(self, request):
+        queryset = self._object_type.objects.filter(dropped_at=None)
+
         login = _LoginMethods.get_login(request.user)
-
-        queryset = Employee.objects.all()
-
         name_filter = _get_request_param(request, 'name')
         if name_filter is not None:
             queryset = queryset.annotate(
@@ -580,6 +577,9 @@ class EmployeeViewSet(_AbstractViewSet):
                     login.organization).data
 
                 result.update({'organization': organization})
+
+        if 'photo' in request.GET:
+            pass
 
         return self._response(result)
 
@@ -659,17 +659,18 @@ class _UserViewSet(_AbstractViewSet):
             else Login.CONTROLLER
 
     def _get_queryset(self, request):
-        result = Login.objects.filter(role=self._user_role(request))
+        queryset = self._object_type.objects.filter(dropped_at=None).filter(role=self._user_role(request))
+        
         login = _LoginMethods.get_login(request.user)
         if login.role == Login.REGISTRATOR:
-            result = result.filter(organization__id=login.organization_id)
+            queryset = queryset.filter(organization__id=login.organization_id)
 
         organization_filter = _get_request_param(
             request, 'organization', True)
         if organization_filter is not None:
-            result = result.filter(organization__id=organization_filter)
+            queryset = queryset.filter(organization__id=organization_filter)
 
-        return result
+        return queryset
 
     @_LoginMethods.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def list(self, request):
@@ -835,12 +836,12 @@ class DeviceViewSet(_AbstractViewSet):
     def _get_queryset(self, request):
         login = _LoginMethods.get_login(request.user)
 
-        result = Device.objects.all()
+        queryset = self._object_type.objects.filter(dropped_at=None)
         if login.role != Login.ADMIN:
-            result = result.filter(id__in=Device2Organization.objects.filter(
+            queryset = queryset.filter(id__in=Device2Organization.objects.filter(
                 organization_id=login.organization_id).values_list('device_id', flat=True))
 
-        return result
+        return queryset
 
     @_LoginMethods.login_check_decorator()
     def list(self, request):
@@ -971,7 +972,7 @@ class DeviceGroupViewSet(_AbstractViewSet):
         return queryset.count()
 
     def _get_queryset(self, request):
-        queryset = DeviceGroup.objects.all()
+        queryset = self._object_type.objects.filter(dropped_at=None)
 
         login = _LoginMethods.get_login(request.user)
 
