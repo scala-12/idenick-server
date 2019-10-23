@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+from threading import Thread
 import socket
 import struct
 from abc import abstractmethod
@@ -1581,6 +1582,28 @@ class MqttUtils:
         photo_payload = {'data': None, 'success': None,
                          'msg': None, 'employee': None}
 
+        def loop_callback(client):
+            equals_counts = 0
+            prev_loop_count = 0
+            with_error = False
+            while (equals_counts < 4) and (payloads_info.get('count') < 8) and (photo_payload.get('success') is None):
+                try:
+                    try:
+                        client.loop()
+                        with_error = False
+                    except socket.error | struct.error:
+                        print("Loop error 1")
+                        client.reconnect()
+                        with_error = True
+                except AttributeError | socket.error | struct.error:
+                    print("Loop error 2")
+                sleep(1)
+                if prev_loop_count == payloads_info.get('count'):
+                    equals_counts += 1
+                else:
+                    prev_loop_count = payloads_info.get('count')
+            client.disconnect()
+
         def message_callback(client, userdata, msg):
             MqttUtils._on_message(client, userdata, msg, payloads_info)
 
@@ -1588,11 +1611,11 @@ class MqttUtils:
             if '!FACE_SEARCH,' in payload_str:
                 photo_payload.update(data=msg.payload[16:])
             elif '!ERROR,' in payload_str:
+                photo_payload.update(success=False)
                 if 'System.NullReferenceException' in payload_str:
-                    photo_payload.update(success=True)
-                else:
-                    photo_payload.update(success=False)
                     photo_payload.update(msg=msg.payload[9:-2].decode('utf-8'))
+            elif '!NOMATCH,' in payload_str:
+                photo_payload.update(success=True)
             elif '!SEARCH_OK,' in payload_str:
                 photo_payload.update(success=False)
                 search_ok_msg = msg.payload[13:].decode('utf-8').split(',')
@@ -1613,31 +1636,19 @@ class MqttUtils:
         client.on_connect = connect_callback
         client.on_message = message_callback
 
-        client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+        try:
+            client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
 
-        client.loop_start()
-        client.publish(publish_topic, "!MakePhoto")
-        client.publish(subscribe_topic, "!MakePhoto")
+            thread_function = Thread(target=loop_callback, args=(client,))
 
-        equals_counts = 0
-        prev_loop_count = 0
-        with_error = False
-        while (equals_counts < 4) and (payloads_info.get('count') < 8) and (photo_payload.get('success') is None):
-            try:
-                client.loop()
-                with_error = False
-            except socket.error | struct.error:
-                print("Loop error")
-                client.reconnect()
-                with_error = True
-            sleep(1)
-            if prev_loop_count == payloads_info.get('count'):
-                equals_counts += 1
-            else:
-                prev_loop_count = payloads_info.get('count')
+            client.publish(publish_topic, "!MakePhoto")
+            client.publish(subscribe_topic, "!MakePhoto")
 
-        client.loop_stop()
-        client.disconnect()
+            thread_function.start()
+            client.loop_forever()
+            thread_function.join()
+        except AttributeError | socket.error | struct.error | SystemExit:
+            print("unexpected error")
 
         result = {'success': None, 'msg': None}
         data = {'photo_b64': None}
