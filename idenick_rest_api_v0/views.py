@@ -662,7 +662,8 @@ class _UserViewSet(_AbstractViewSet):
             else Login.CONTROLLER
 
     def _get_queryset(self, request):
-        queryset = self._object_type.objects.filter(role=self._user_role(request))
+        queryset = self._object_type.objects.filter(
+            role=self._user_role(request))
 
         login = _LoginMethods.get_login(request.user)
         if login.role == Login.REGISTRATOR:
@@ -1310,31 +1311,34 @@ class ReportTools:
 
         result = {}
 
+        extra = {}
+
         employees_ids = set(
             report_queryset.values_list('employee_id', flat=True))
         employees_queryset = Employee.objects.filter(
             id__in=employees_ids)
 
-        result.update(employees=_get_objects_by_id(
+        extra.update(employees=_get_objects_by_id(
             EmployeeSerializers.ModelSerializer, queryset=employees_queryset))
 
         if show_organization:
             if login.role == Login.CONTROLLER:
-                result.update(organizations={
+                extra.update(organizations={
                     login.organization_id: OrganizationSerializers.ModelSerializer(
                         Organization.objects.get(pk=login.organization_id)).data})
 
         if show_department:
-            result.update({'department': DepartmentSerializers.ModelSerializer(
+            extra.update({'department': DepartmentSerializers.ModelSerializer(
                 Department.objects.get(id=entity_id)).data})
 
         if show_device:
             devices_ids = set(
                 report_queryset.values_list('device_id', flat=True))
-            result.update(devices=_get_objects_by_id(
+            extra.update(devices=_get_objects_by_id(
                 DeviceSerializers.ModelSerializer, clazz=Device, ids=devices_ids))
 
         result.update(count=report_data.get('count'))
+        result.update(extra=extra)
 
         result.update(data=EmployeeRequestSerializer(
             report_queryset, many=True).data)
