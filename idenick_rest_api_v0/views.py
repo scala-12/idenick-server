@@ -129,13 +129,9 @@ class ErrorMessage(Enum):
 
 class _AbstractViewSet(viewsets.ViewSet):
     _serializer_classes = None
-    _object_type = None
 
-    def _get_queryset(self, request):
+    def _get_queryset(self, request, base_filter=False):
         pass
-
-    def _get_count_all(self, request):
-        return self._object_type.objects.all().count()
 
     def _response(self, data, status_value=status.HTTP_200_OK):
         return Response(
@@ -186,7 +182,7 @@ class _AbstractViewSet(viewsets.ViewSet):
         serializer = self.get_serializer_class()(_queryset, many=True, context={
             'organization': organization})
 
-        return {'data': serializer.data, 'count': self._get_count_all(request)}
+        return {'data': serializer.data, 'count': self._get_queryset(request, True).count()}
 
     def _retrieve(self, request, pk=None, queryset=None):
         return self._response(self._retrieve_data(request, pk, queryset))
@@ -270,27 +266,30 @@ class OrganizationViewSet(_AbstractViewSet):
         'partial_update': OrganizationSerializers.CreateSerializer,
     }
 
-    _object_type = Organization
+    def _get_queryset(self, request, base_filter=False):
+        queryset = Organization.objects.filter(dropped_at=None)
 
-    def _get_queryset(self, request):
-        queryset = self._object_type.objects.filter(dropped_at=None)
+        if not base_filter:
+            name_filter = _get_request_param(request, 'name')
+            if name_filter is not None:
+                queryset = queryset.filter(name__icontains=name_filter)
 
-        name_filter = _get_request_param(request, 'name')
-        if name_filter is not None:
-            queryset = queryset.filter(name__icontains=name_filter)
-        device_group_filter = _get_request_param(request, 'deviceGroup', True)
+        device_group_filter = _get_request_param(
+            request, 'deviceGroup', True, base_filter=base_filter)
         if device_group_filter is not None:
             organization_id_list = queryset.values_list('id', flat=True)
             queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
                 organization_id__in=organization_id_list).filter(
                 device_group_id=device_group_filter).values_list('organization', flat=True))
-        device_filter = _get_request_param(request, 'device', True)
+        device_filter = _get_request_param(
+            request, 'device', True, base_filter=base_filter)
         if device_filter is not None:
             organization_id_list = queryset.values_list('id', flat=True)
             queryset = queryset.filter(id__in=Device2Organization.objects.filter(
                 organization_id__in=organization_id_list).filter(
                 device_id=device_filter).values_list('organization', flat=True))
-        employee_filter = _get_request_param(request, 'employee', True)
+        employee_filter = _get_request_param(
+            request, 'employee', True, base_filter=base_filter)
         if employee_filter is not None:
             organization_id_list = queryset.values_list('id', flat=True)
             queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
@@ -363,37 +362,21 @@ class DepartmentViewSet(_AbstractViewSet):
         'partial_update': DepartmentSerializers.CreateSerializer,
     }
 
-    _object_type = Department
-
-    def _get_count_all(self, request):
-        queryset = self._object_type.objects.all()
-
+    def _get_queryset(self, request, base_filter=False):
         login = _LoginMethods.get_login(request.user)
-        if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
-            queryset = queryset.filter(organization=login.organization_id)
-
-        employee_filter = _get_request_param(
-            request, 'employee', True, base_filter=True)
-        if employee_filter is not None:
-            queryset = queryset.filter(
-                id__in=Employee2Department.objects.filter(
-                    employee_id=employee_filter).values_list('department', flat=True))
-
-        return queryset.count()
-
-    def _get_queryset(self, request):
-        login = _LoginMethods.get_login(request.user)
-        queryset = self._object_type.objects.filter(dropped_at=None)
+        queryset = Department.objects.filter(dropped_at=None)
         role = login.role
         if (role == Login.CONTROLLER) or (role == Login.REGISTRATOR):
             queryset = queryset.filter(
                 organization_id=login.organization_id)
 
-        name_filter = _get_request_param(request, 'name')
-        if name_filter is not None:
-            queryset = queryset.filter(name__icontains=name_filter)
+        if not base_filter:
+            name_filter = _get_request_param(request, 'name')
+            if name_filter is not None:
+                queryset = queryset.filter(name__icontains=name_filter)
 
-        employee_filter = _get_request_param(request, 'employee', True)
+        employee_filter = _get_request_param(
+            request, 'employee', True, base_filter=base_filter)
         if employee_filter is not None:
             queryset = queryset.filter(id__in=Employee2Department.objects.filter(
                 employee_id=employee_filter).values_list('department_id', flat=True))
@@ -497,47 +480,23 @@ class EmployeeViewSet(_AbstractViewSet):
         'partial_update': EmployeeSerializers.CreateSerializer,
     }
 
-    _object_type = Employee
-
-    def _get_count_all(self, request):
-        queryset = self._object_type.objects.all()
-
-        organization_filter = _get_request_param(
-            request, 'organization', True, base_filter=True)
+    def _get_queryset(self, request, base_filter=False):
+        queryset = Employee.objects.filter(dropped_at=None)
 
         login = _LoginMethods.get_login(request.user)
-        if (organization_filter is None) \
-                and ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
-            organization_filter = login.organization_id
+        if not base_filter:
+            name_filter = _get_request_param(request, 'name')
+            if name_filter is not None:
+                queryset = queryset.annotate(
+                    full_name=Concat('last_name', Value(
+                        ' '), 'first_name', Value(' '), 'patronymic'),
+                ).filter(Q(full_name__icontains=name_filter)
+                         | Q(last_name__icontains=name_filter)
+                         | Q(first_name__icontains=name_filter)
+                         | Q(patronymic__icontains=name_filter))
 
         department_filter = _get_request_param(
-            request, 'department', True, base_filter=True)
-        if department_filter is not None:
-            queryset = queryset.filter(
-                id__in=Employee2Department.objects.filter(
-                    department_id=department_filter).values_list('employee', flat=True))
-
-        if organization_filter is not None:
-            queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
-                organization=organization_filter).values_list('employee', flat=True))
-
-        return queryset.count()
-
-    def _get_queryset(self, request):
-        queryset = self._object_type.objects.filter(dropped_at=None)
-
-        login = _LoginMethods.get_login(request.user)
-        name_filter = _get_request_param(request, 'name')
-        if name_filter is not None:
-            queryset = queryset.annotate(
-                full_name=Concat('last_name', Value(
-                    ' '), 'first_name', Value(' '), 'patronymic'),
-            ).filter(Q(full_name__icontains=name_filter)
-                     | Q(last_name__icontains=name_filter)
-                     | Q(first_name__icontains=name_filter)
-                     | Q(patronymic__icontains=name_filter))
-
-        department_filter = _get_request_param(request, 'department', True)
+            request, 'department', True, base_filter=base_filter)
         if (department_filter is not None):
             queryset = queryset.filter(
                 id__in=Employee2Department.objects.filter(
@@ -548,7 +507,7 @@ class EmployeeViewSet(_AbstractViewSet):
             organization_filter = login.organization_id
         elif login.role == Login.ADMIN:
             organization_filter = _get_request_param(
-                request, 'organization', True)
+                request, 'organization', True, base_filter=base_filter)
 
         if organization_filter is not None:
             employee_id_list = queryset.values_list('id', flat=True)
@@ -640,37 +599,30 @@ class _UserViewSet(_AbstractViewSet):
         'partial_update': LoginSerializer.UpdateSerializer,
     }
 
-    _object_type = Login
-
-    def _get_count_all(self, request):
-        queryset = Login.objects.filter(role=self._user_role(request))
-
-        organization_filter = _get_request_param(
-            request, 'organization', True, base_filter=True)
-
-        login = _LoginMethods.get_login(request.user)
-        if (organization_filter is None) and (login.role == Login.REGISTRATOR):
-            organization_filter = login.organization_id
-
-        if organization_filter is not None:
-            queryset = queryset.filter(organization=organization_filter)
-
-        return queryset.count()
-
     def _user_role(self, request):
         return Login.REGISTRATOR if (_LoginMethods.get_login(request.user).role == Login.ADMIN) \
             else Login.CONTROLLER
 
-    def _get_queryset(self, request):
-        queryset = self._object_type.objects.filter(
+    def _get_queryset(self, request, base_filter=False):
+        queryset = Login.objects.filter(
             role=self._user_role(request))
+
+        if not base_filter:
+            name_filter = _get_request_param(request, 'name')
+            if name_filter is not None:
+                users_ids = set(map(lambda i: UserSerializer(i).data.get('id'), User.objects.annotate(
+                    full_name_1=Concat('last_name', Value(' '), 'first_name'),
+                    full_name_2=Concat('first_name', Value(' '), 'last_name'),
+                ).filter(Q(full_name_1__icontains=name_filter) | Q(full_name_2__icontains=name_filter)
+                         | Q(last_name__icontains=name_filter) | Q(first_name__icontains=name_filter))))
+                queryset = queryset.filter(user_id__in=users_ids)
 
         login = _LoginMethods.get_login(request.user)
         if login.role == Login.REGISTRATOR:
             queryset = queryset.filter(organization__id=login.organization_id)
 
         organization_filter = _get_request_param(
-            request, 'organization', True)
+            request, 'organization', True, base_filter=base_filter)
         if organization_filter is not None:
             queryset = queryset.filter(organization__id=organization_filter)
 
@@ -679,15 +631,6 @@ class _UserViewSet(_AbstractViewSet):
     @_LoginMethods.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def list(self, request):
         queryset = self._get_queryset(request)
-        name_filter = _get_request_param(request, 'name')
-        users_ids = None
-        if name_filter is not None:
-            users_ids = set(map(lambda i: UserSerializer(i).data.get('id'), User.objects.annotate(
-                full_name_1=Concat('last_name', Value(' '), 'first_name'),
-                full_name_2=Concat('first_name', Value(' '), 'last_name'),
-            ).filter(Q(full_name_1__icontains=name_filter) | Q(full_name_2__icontains=name_filter)
-                     | Q(last_name__icontains=name_filter) | Q(first_name__icontains=name_filter))))
-            queryset = queryset.filter(user_id__in=users_ids)
 
         result = self._list_data(request, queryset)
 
@@ -811,61 +754,41 @@ class DeviceViewSet(_AbstractViewSet):
         'partial_update': DeviceSerializers.UpdateSerializer,
     }
 
-    _object_type = Device
-
-    def _get_count_all(self, request):
-        queryset = self._object_type.objects.all()
-
-        organization_filter = _get_request_param(
-            request, 'organization', True, base_filter=True)
-
-        login = _LoginMethods.get_login(request.user)
-        if (organization_filter is None) \
-                and ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
-            organization_filter = login.organization_id
-
-        device_group_filter = _get_request_param(
-            request, 'deviceGroup', True, base_filter=True)
-        if device_group_filter is not None:
-            queryset = queryset.filter(id__in=Device2DeviceGroup.objects.filter(
-                device_group_id=device_group_filter).values_list('device', flat=True))
-
-        if organization_filter is not None:
-            queryset = queryset.filter(id__in=Device2Organization.objects.filter(
-                organization=organization_filter).values_list('device', flat=True))
-
-        return queryset.count()
-
-    def _get_queryset(self, request):
+    def _get_queryset(self, request, base_filter=False):
         login = _LoginMethods.get_login(request.user)
 
-        queryset = self._object_type.objects.filter(dropped_at=None)
+        queryset = Device.objects.filter(dropped_at=None)
         if login.role != Login.ADMIN:
             queryset = queryset.filter(id__in=Device2Organization.objects.filter(
                 organization_id=login.organization_id).values_list('device_id', flat=True))
+
+        login = _LoginMethods.get_login(request.user)
+
+        if not base_filter:
+            name_filter = _get_request_param(request, 'name')
+            if name_filter is not None:
+                queryset = queryset.filter(
+                    Q(name__icontains=name_filter) | Q(mqtt__icontains=name_filter))
+        device_group_filter = _get_request_param(
+            request, 'deviceGroup', True, base_filter=base_filter)
+        if device_group_filter is not None:
+            queryset = queryset \
+                .filter(id__in=RelationsUtils.get_relates(Device, 'device_id', Device2DeviceGroup,
+                                                          'device_group_id', device_group_filter,
+                                                          login).values_list('id', flat=True))
+        organization_filter = _get_request_param(
+            request, 'organization', True, base_filter=base_filter)
+        if organization_filter is not None:
+            device_id_list = queryset.values_list('id', flat=True)
+            queryset = queryset.filter(id__in=Device2Organization.objects.filter(
+                device_id__in=device_id_list).filter(
+                organization_id=organization_filter).values_list('device_id', flat=True))
 
         return queryset
 
     @_LoginMethods.login_check_decorator()
     def list(self, request):
         queryset = self._get_queryset(request)
-        login = _LoginMethods.get_login(request.user)
-
-        name_filter = _get_request_param(request, 'name')
-        if name_filter is not None:
-            queryset = queryset.filter(
-                Q(name__icontains=name_filter) | Q(mqtt__icontains=name_filter))
-        device_group_filter = _get_request_param(request, 'deviceGroup', True)
-        if device_group_filter is not None:
-            queryset = queryset.filter(id__in=RelationsUtils.get_relates(Device, 'device_id', Device2DeviceGroup,
-                                                                         'device_group_id', device_group_filter,
-                                                                         login).values_list('id', flat=True))
-        organization_filter = _get_request_param(request, 'organization', True)
-        if organization_filter is not None:
-            device_id_list = queryset.values_list('id', flat=True)
-            queryset = queryset.filter(id__in=Device2Organization.objects.filter(
-                device_id__in=device_id_list).filter(
-                organization_id=organization_filter).values_list('device_id', flat=True))
 
         result = self._list_data(request, queryset)
 
@@ -948,53 +871,29 @@ class DeviceGroupViewSet(_AbstractViewSet):
         'partial_update': DeviceGroupSerializers.CreateSerializer,
     }
 
-    _object_type = DeviceGroup
-
-    def _get_count_all(self, request):
-        queryset = DeviceGroup.objects.all()
-
-        device_filter = _get_request_param(
-            request, 'device', True, base_filter=True)
-        if device_filter is not None:
-            queryset = queryset.filter(id__in=Device2DeviceGroup.objects.
-                                       filter(device_id=device_filter)
-                                       .values_list('device_group', flat=True))
-
-        organization_filter = _get_request_param(
-            request, 'organization', True, base_filter=True)
-
-        login = _LoginMethods.get_login(request.user)
-        if (organization_filter is None) \
-                and ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
-            organization_filter = login.organization_id
-
-        if organization_filter is not None:
-            queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
-                organization=organization_filter).values_list('device_group', flat=True))
-
-        return queryset.count()
-
-    def _get_queryset(self, request):
-        queryset = self._object_type.objects.filter(dropped_at=None)
+    def _get_queryset(self, request, base_filter=False):
+        queryset = DeviceGroup.objects.filter(dropped_at=None)
 
         login = _LoginMethods.get_login(request.user)
 
-        name_filter = _get_request_param(request, 'name')
-        if name_filter is not None:
-            queryset = queryset.filter(name__icontains=name_filter)
+        if not base_filter:
+            name_filter = _get_request_param(request, 'name')
+            if name_filter is not None:
+                queryset = queryset.filter(name__icontains=name_filter)
 
         organization_filter = None
         if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
             organization_filter = login.organization_id
         elif login.role == Login.ADMIN:
             organization_filter = _get_request_param(
-                request, 'organization', True)
+                request, 'organization', True, base_filter=base_filter)
         if organization_filter is not None:
             group_id_list = queryset.values_list('id', flat=True)
             queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
                 device_group_id__in=group_id_list).filter(
                 organization_id=organization_filter).values_list('device_group_id', flat=True))
-        device_filter = _get_request_param(request, 'device', True)
+        device_filter = _get_request_param(
+            request, 'device', True, base_filter=base_filter)
         if device_filter is not None:
             group_id_list = queryset.values_list('id', flat=True)
             queryset = queryset.filter(id__in=Device2DeviceGroup.objects.filter(
