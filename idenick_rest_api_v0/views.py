@@ -1423,12 +1423,16 @@ class MqttUtils:
 
     @staticmethod
     def _on_connect(client, userdata, flags, rc):
-        print("Connected to [%s]:[%s][%s] with result code [%s]" % (
+        print(client._client_id.decode('utf-8') + " Connected to %s:%s%s with result code %s" % (
             MqttUtils.HOST, MqttUtils.PORT, MqttUtils.PATH, str(rc)))
 
     @staticmethod
-    def _on_disconnect():
-        print("connection lost")
+    def _on_subscribe(client, userdata, mid, granted_qos):
+        print(client._client_id.decode('utf-8') + ' subscribed')
+
+    @staticmethod
+    def _on_disconnect(client, userdata, rc):
+        print(client._client_id.decode('utf-8') + " disconnected")
 
     @staticmethod
     def _on_message(client, userdata, msg, payloads_info=None):
@@ -1456,7 +1460,8 @@ class MqttUtils:
         def message_callback(client, userdata, msg):
             MqttUtils._on_message(client, userdata, msg, payloads_info)
 
-        client = mqtt.Client(clean_session=True, transport="tcp")
+        client = mqtt.Client(client_id=device.mqtt,
+                             clean_session=True, transport="tcp")
         client.on_connect = MqttUtils._on_connect
         client.on_message = message_callback
 
@@ -1477,43 +1482,36 @@ class MqttUtils:
         publish_topic = MqttUtils.PUBLISH_TOPIC_THREAD + device.mqtt
         subscribe_topic = MqttUtils.SUBSCRIBE_TOPIC_THREAD + device.mqtt
 
-        def connect_callback(client, userdata, flags, rc):
-            MqttUtils._on_connect(client, userdata, flags, rc)
-
-            client.subscribe(subscribe_topic, qos=0)
-            client.subscribe(publish_topic, qos=0)
-
-        payloads_info = {'msg_list': [], 'count': 0}
+        payloads_info = {'msg_list': [], 'count': 0, 'subscribed': None}
         photo_payload = {'data': None, 'success': None,
                          'msg': None, 'employee': None}
 
-        def loop_callback(client):
-            equals_counts = 0
-            prev_loop_count = 0
-            with_error = False
-            while (equals_counts < 4) and (payloads_info.get('count') < 8) and (photo_payload.get('success') is None):
-                try:
-                    try:
-                        client.loop()
-                        with_error = False
-                    except socket.error | struct.error:
-                        print("Loop error 1")
-                        with_error = True
-                except TypeError | AttributeError | socket.error | struct.error:
-                    print("Loop error 2")
-                sleep(1)
-                if prev_loop_count == payloads_info.get('count'):
-                    equals_counts += 1
-                else:
-                    prev_loop_count = payloads_info.get('count')
-            client.disconnect()
+        def s_subscribe_callback(client, userdata, mid, granted_qos):
+            MqttUtils._on_subscribe(client, userdata, mid, granted_qos)
+            if payloads_info.get('subscribed') is None:
+                payloads_info.update(subscribed=False)
+            elif payloads_info.get('subscribed') is False:
+                payloads_info.update(subscribed=True)
 
-        def message_callback(client, userdata, msg):
+        def s_disconnect_callback(client, userdata, rc):
+            MqttUtils._on_disconnect(client, userdata, rc)
+            payloads_info.update(subscribed=None)
+
+        def s1_connect_callback(s_client, s_userdata, s_flags, s_rc):
+            MqttUtils._on_connect(s_client, s_userdata, s_flags, s_rc)
+            s_client.subscribe(subscribe_topic, qos=0)
+
+        def s2_connect_callback(s_client, s_userdata, s_flags, s_rc):
+            MqttUtils._on_connect(s_client, s_userdata, s_flags, s_rc)
+            s_client.subscribe(publish_topic, qos=0)
+
+        def s_message_callback(client, userdata, msg):
             MqttUtils._on_message(client, userdata, msg, payloads_info)
 
             payload_str = str(msg.payload)
             if '!FACE_SEARCH,' in payload_str:
                 photo_payload.update(data=msg.payload[16:])
+                client.disconnect()
             elif '!ERROR,' in payload_str:
                 photo_payload.update(success=False)
                 if 'System.NullReferenceException' in payload_str:
@@ -1536,45 +1534,97 @@ class MqttUtils:
                     photo_payload.update(
                         msg='Пользователь существует, но не найден (' + ' '.join(search_ok_msg[0:3]) + ')')
 
-        def disconnect_callback(client):
-            MqttUtils._on_disconnect()
-            sleep(1)
-            client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+            if photo_payload.get('success') is not None:
+                client.disconnect()
 
-        client = mqtt.Client(clean_session=True, transport="tcp")
-        client.on_connect = connect_callback
-        client.on_message = message_callback
+        s1_client = mqtt.Client(
+            client_id=(subscribe_topic + ' listener1'), clean_session=True, transport="tcp")
+        s1_client.on_connect = s1_connect_callback
+        s1_client.on_subscribe = s_subscribe_callback
+        s1_client.on_disconnect = s_disconnect_callback
+        s1_client.on_message = s_message_callback
 
-        client.on_disconnect = MqttUtils._on_connect
+        s2_client = mqtt.Client(
+            client_id=(publish_topic + ' listener2'), clean_session=True, transport="tcp")
+        s2_client.on_connect = s2_connect_callback
+        s2_client.on_subscribe = s_subscribe_callback
+        s2_client.on_disconnect = s_disconnect_callback
+        s2_client.on_message = s_message_callback
 
+        s1_client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+        s2_client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+
+        def loop_forever(client):
+            try:
+                client.loop_forever()
+            except:
+                pass
+
+        loop_forever_thread_1 = Thread(target=loop_forever,
+                                     args=(s1_client,))
+        loop_forever_thread_2 = Thread(target=loop_forever,
+                                     args=(s2_client,))
+        loop_forever_thread_1.start()
+        loop_forever_thread_2.start()
+
+        subscribe_waiting = 0
+        while (subscribe_waiting < 25) and (payloads_info.get('subscribed') is not True):
+            subscribe_waiting += 1
+            sleep(.2)
+
+        def p_connect_callback(p_client, p_userdata, p_flags, p_rc):
+            MqttUtils._on_connect(p_client, p_userdata, p_flags, p_rc)
+
+            p_client.publish(subscribe_topic, "!MakePhoto")
+
+        def p_publish_callback(p_client, userdata, result):
+            p_client.disconnect()
+
+        p_client = mqtt.Client(
+            client_id=(publish_topic + ' publisher'), clean_session=True, transport="tcp")
+        p_client.on_disconnect = MqttUtils._on_disconnect
+        p_client.on_connect = p_connect_callback
+        p_client.on_publish = p_publish_callback
+        p_client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+        p_client.loop_forever()
+
+        connect_wait_count = 0
+        while not payloads_info.get('subscribed') and (connect_wait_count < 20):
+            connect_wait_count += 1
+            sleep(.2)
+
+        equals_counts = 0
+        prev_loop_count = 0
+        with_error = False
         try:
-            client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+            while (equals_counts < 5) and (payloads_info.get('count') < 8) and (photo_payload.get('success') is None):
+                s1_client.loop()
+                s2_client.loop()
+                sleep(1)
+                if prev_loop_count == payloads_info.get('count'):
+                    equals_counts += 1
+                else:
+                    prev_loop_count = payloads_info.get('count')
+        except Exception as err:
+            with_error = True
 
-            thread_function = Thread(target=loop_callback, args=(client,))
-
-            client.publish(publish_topic, "!MakePhoto")
-            client.publish(subscribe_topic, "!MakePhoto")
-
-            thread_function.start()
-            client.loop_forever()
-            thread_function.join()
-        except AttributeError | socket.error | struct.error | SystemExit:
-            print("unexpected error")
+        s1_client.disconnect()
+        s2_client.disconnect()
 
         result = {'success': None, 'msg': None}
         data = {'photo_b64': None}
-        if photo_payload.get('success') is not None:
+        if photo_payload.get('data') is not None:
             photo_data = photo_payload.get('data')
-            photo_b64 = base64.b64encode(photo_data)
+            data.update(photo_b64=base64.b64encode(photo_data))
 
-            data.update(photo_b64=photo_b64)
-            result.update(success=photo_payload.get('success'))
-            result.update(msg=photo_payload.get('msg'))
+        result.update(success=(not with_error) and (photo_payload.get('success') is True))
+        if photo_payload.get('employee') is not None:
             result.update(employee=photo_payload.get('employee'))
-        else:
-            if with_error:
-                result.update(msg='Ошибка подключения к устройству')
-            data.update(success=False)
+
+        if with_error:
+            result.update(msg='Ошибка подключения к устройству')
+        if photo_payload.get('msg') is not None:
+            result.update(msg=photo_payload.get('msg'))
 
         result.update(data=data)
 
