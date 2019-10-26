@@ -1481,19 +1481,38 @@ class MqttUtils:
 
         publish_topic = MqttUtils.PUBLISH_TOPIC_THREAD + device.mqtt
         subscribe_topic = MqttUtils.SUBSCRIBE_TOPIC_THREAD + device.mqtt
+        subscribe_info = {'one': False, 'two': False}
 
-        payloads_info = {'msg_list': [], 'count': 0, 'subscribed': None}
-        photo_payload = {'data': None, 'success': None,
-                         'msg': None, 'employee': None}
+        def publish_command():
+            def p_connect_callback(p_client, p_userdata, p_flags, p_rc):
+                MqttUtils._on_connect(p_client, p_userdata, p_flags, p_rc)
 
-        def s_subscribe_callback(client, userdata, mid, granted_qos):
+                p_client.publish(subscribe_topic, "!MakePhoto")
+
+            def p_publish_callback(p_client, userdata, result):
+                p_client.disconnect()
+
+            p_client = mqtt.Client(
+                client_id=(publish_topic + ' publisher'), clean_session=True, transport="tcp")
+            p_client.on_disconnect = MqttUtils._on_disconnect
+            p_client.on_connect = p_connect_callback
+            p_client.on_publish = p_publish_callback
+            p_client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+            p_client.loop_forever()
+
+        def s1_subscribe_callback(client, userdata, mid, granted_qos, subscribe_info):
             MqttUtils._on_subscribe(client, userdata, mid, granted_qos)
-            if payloads_info.get('subscribed') is None:
-                payloads_info.update(subscribed=False)
-            elif payloads_info.get('subscribed') is False:
-                payloads_info.update(subscribed=True)
+            subscribe_info.update(one=True)
+            if subscribe_info.get('two'):
+                publish_command()
 
-        def s_disconnect_callback(client, userdata, rc):
+        def s2_subscribe_callback(client, userdata, mid, granted_qos, subscribe_info):
+            MqttUtils._on_subscribe(client, userdata, mid, granted_qos)
+            subscribe_info.update(two=True)
+            if subscribe_info.get('one'):
+                publish_command()
+
+        def s_disconnect_callback(client, userdata, rc, payloads_info):
             MqttUtils._on_disconnect(client, userdata, rc)
             payloads_info.update(subscribed=None)
 
@@ -1505,7 +1524,7 @@ class MqttUtils:
             MqttUtils._on_connect(s_client, s_userdata, s_flags, s_rc)
             s_client.subscribe(publish_topic, qos=0)
 
-        def s_message_callback(client, userdata, msg):
+        def s_message_callback(client, userdata, msg, payloads_info, photo_payload):
             MqttUtils._on_message(client, userdata, msg, payloads_info)
 
             payload_str = str(msg.payload)
@@ -1537,70 +1556,53 @@ class MqttUtils:
             if photo_payload.get('success') is not None:
                 client.disconnect()
 
+        payloads_info = {'msg_list': [], 'count': 0, 'subscribed': None}
+        photo_payload = {'data': None, 'success': None,
+                         'msg': None, 'employee': None}
+
         s1_client = mqtt.Client(
             client_id=(subscribe_topic + ' listener1'), clean_session=True, transport="tcp")
         s1_client.on_connect = s1_connect_callback
-        s1_client.on_subscribe = s_subscribe_callback
-        s1_client.on_disconnect = s_disconnect_callback
-        s1_client.on_message = s_message_callback
+        s1_client.on_subscribe = lambda client, userdata, mid, granted_qos: \
+            s1_subscribe_callback(client, userdata, mid,
+                                  granted_qos, subscribe_info)
+        s1_client.on_disconnect = lambda client, userdata, rc: \
+            s_disconnect_callback(client, userdata, rc, payloads_info)
+        s1_client.on_message = lambda client, userdata, msg: \
+            s_message_callback(client, userdata, msg,
+                               payloads_info, photo_payload)
 
         s2_client = mqtt.Client(
             client_id=(publish_topic + ' listener2'), clean_session=True, transport="tcp")
         s2_client.on_connect = s2_connect_callback
-        s2_client.on_subscribe = s_subscribe_callback
-        s2_client.on_disconnect = s_disconnect_callback
-        s2_client.on_message = s_message_callback
+        s2_client.on_subscribe = lambda client, userdata, mid, granted_qos: \
+            s2_subscribe_callback(client, userdata, mid,
+                                  granted_qos, subscribe_info)
+        s2_client.on_disconnect = lambda client, userdata, rc: \
+            s_disconnect_callback(client, userdata, rc, payloads_info)
+        s2_client.on_message = lambda client, userdata, msg: \
+            s_message_callback(client, userdata, msg,
+                               payloads_info, photo_payload)
 
         s1_client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
         s2_client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
 
-        def loop_forever(client):
-            try:
-                client.loop_forever()
-            except:
-                pass
-
-        loop_forever_thread_1 = Thread(target=loop_forever,
-                                     args=(s1_client,))
-        loop_forever_thread_2 = Thread(target=loop_forever,
-                                     args=(s2_client,))
-        loop_forever_thread_1.start()
-        loop_forever_thread_2.start()
-
         subscribe_waiting = 0
-        while (subscribe_waiting < 25) and (payloads_info.get('subscribed') is not True):
+        while (subscribe_waiting < 25) and not (subscribe_info.get('one') and subscribe_info.get('two')):
+            if not subscribe_info.get('one'):
+                s1_client.loop(timeout=5.0)
+            if not subscribe_info.get('two'):
+                s2_client.loop(timeout=5.0)
+
             subscribe_waiting += 1
-            sleep(.2)
-
-        def p_connect_callback(p_client, p_userdata, p_flags, p_rc):
-            MqttUtils._on_connect(p_client, p_userdata, p_flags, p_rc)
-
-            p_client.publish(subscribe_topic, "!MakePhoto")
-
-        def p_publish_callback(p_client, userdata, result):
-            p_client.disconnect()
-
-        p_client = mqtt.Client(
-            client_id=(publish_topic + ' publisher'), clean_session=True, transport="tcp")
-        p_client.on_disconnect = MqttUtils._on_disconnect
-        p_client.on_connect = p_connect_callback
-        p_client.on_publish = p_publish_callback
-        p_client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
-        p_client.loop_forever()
-
-        connect_wait_count = 0
-        while not payloads_info.get('subscribed') and (connect_wait_count < 20):
-            connect_wait_count += 1
-            sleep(.2)
 
         equals_counts = 0
         prev_loop_count = 0
         with_error = False
         try:
             while (equals_counts < 5) and (payloads_info.get('count') < 8) and (photo_payload.get('success') is None):
-                s1_client.loop()
-                s2_client.loop()
-                sleep(1)
+                s1_client.loop(timeout=4.0)
+                s2_client.loop(timeout=4.0)
                 if prev_loop_count == payloads_info.get('count'):
                     equals_counts += 1
                 else:
@@ -1617,7 +1619,8 @@ class MqttUtils:
             photo_data = photo_payload.get('data')
             data.update(photo_b64=base64.b64encode(photo_data))
 
-        result.update(success=(not with_error) and (photo_payload.get('success') is True))
+        result.update(success=(not with_error) and (
+            photo_payload.get('success') is True))
         if photo_payload.get('employee') is not None:
             result.update(employee=photo_payload.get('employee'))
 
