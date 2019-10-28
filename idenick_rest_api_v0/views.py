@@ -1486,17 +1486,13 @@ class MqttUtils:
         def publish_command():
             def p_connect_callback(p_client, p_userdata, p_flags, p_rc):
                 MqttUtils._on_connect(p_client, p_userdata, p_flags, p_rc)
-
                 p_client.publish(subscribe_topic, "!MakePhoto")
-
-            def p_publish_callback(p_client, userdata, result):
-                p_client.disconnect()
 
             p_client = mqtt.Client(
                 client_id=(publish_topic + ' publisher'), clean_session=True, transport="tcp")
             p_client.on_disconnect = MqttUtils._on_disconnect
             p_client.on_connect = p_connect_callback
-            p_client.on_publish = p_publish_callback
+            p_client.on_publish = lambda client, userdata, result: client.disconnect()
             p_client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
             p_client.loop_forever()
 
@@ -1613,7 +1609,7 @@ class MqttUtils:
         s1_client.disconnect()
         s2_client.disconnect()
 
-        result = {'success': None, 'msg': None}
+        result = {'success': None, 'msg': None, 'mqtt': device.mqtt}
         data = {'photo_b64': None}
         if photo_payload.get('data') is not None:
             photo_data = photo_payload.get('data')
