@@ -1127,18 +1127,18 @@ class ReportTools:
         workbook = xlsxwriter.Workbook(output_file, {'in_memory': True})
         worksheet = workbook.add_worksheet()
 
+        NOT_FOUNDED = 'Не определен'
         row = 1
         for rl in queryset:
             fields = [
-                rl.employee.organization.name,
-                rl.employee.get_full_name(),
-                rl.device.name,
-                rl.device.mqtt,
+                NOT_FOUNDED if rl.employee is None else rl.employee.get_full_name(),
+                NOT_FOUNDED if rl.device is None else rl.device.name,
+                NOT_FOUNDED if rl.device is None else rl.device.mqtt,
                 rl.moment.strftime('%Y-%m-%d %H:%M:%S'),
-                0 if rl.request_type is None else rl.request_type,
-                0 if rl.response_type is None else rl.response_type,
+                NOT_FOUNDED if rl.request_type is None else rl.get_request_type_display(),
+                NOT_FOUNDED if rl.response_type is None else rl.get_response_type_display(),
                 rl.description,
-                0 if rl.algorithm_type is None else rl.algorithm_type,
+                NOT_FOUNDED if rl.algorithm_type is None else rl.get_algorithm_type_display(),
             ]
             col = 0
             for f in fields:
@@ -1154,8 +1154,6 @@ class ReportTools:
             id__in=set(queryset.values_list('employee', flat=True))))) + [len('Сотрудник')])
 
         fields = [
-            {'name': 'Организация', 'length': get_max_field_lenght_list(
-                'employee__organization__name', 'Организация')},
             {'name': 'Сотрудник', 'length': max_employee_name_lenght},
             {'name': 'Устройство', 'length': get_max_field_lenght_list(
                 'device__name', 'Устройство')},
