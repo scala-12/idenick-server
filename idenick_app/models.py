@@ -258,18 +258,107 @@ class Device2Organization(_AbstractEntry4Old):
 
 
 class EmployeeRequest(models.Model):
-    """Employee request model"""
+    """Employee request model. READ ONLY"""
+    UNKNOWN = 0
+    UNSUPPORTED = 1
+    GET_VERSION  = 2
+    PING = 3
+
+    FINGER_DELETE = 10
+    FINGER_ENROLL = 11
+    FINGER_SEARCH = 12
+
+    CARD_DELETE = 20
+    CARD_ENROLL = 21
+    CARD_SEARCH = 22
+
+    TEMPLATE_DELETE = 30
+    TEMPLATE_ENROLL = 31
+    TEMPLATE_SEARCH = 32
+
+    FACE_DELETE = 40
+    FACE_ENROLL = 41
+    FACE_SEARCH = 42
+
+    REQUEST_TYPE = [
+        (UNKNOWN, 'Не существующий тип пакета'),
+        (UNSUPPORTED, 'Запрошенная команда не поддерживается'),
+        (GET_VERSION, 'Запрос версии протокола'),
+        (PING, 'PING сервера'),
+
+        (FINGER_DELETE, 'Запрос на удаление записи по изображению отпечатка'),
+        (FINGER_ENROLL, 'Запрос на регистрацию записи по изображению отпечатка'),
+        (FINGER_SEARCH, 'Запрос на поиск записи по изображению ранее зарегистрированного отпечатка'),
+
+        (CARD_DELETE, 'Запрос на удаление записи по идентификатору, полученному со считывателя карт'),
+        (CARD_ENROLL, 'Запрос на регистрацию записи по идентификатору, полученному со считывателя карт'),
+        (CARD_SEARCH, 'Запрос на поиск записи по идентификатору, полученному со считывателя карт'),
+
+        (TEMPLATE_DELETE, 'Запрос на удаление записи по шаблону отпечатка'),
+        (TEMPLATE_ENROLL, 'Запрос на регистрацию записи по шаблону отпечатка'),
+        (TEMPLATE_SEARCH, 'Запрос на поиск записи по ранее зарегистрированному шаблону отпечатка'),
+
+        (FACE_DELETE, 'Запрос на удаление записи по изображению лица'),
+        (FACE_ENROLL, 'Запрос на регистрацию записи по изображению лица'),
+        (FACE_SEARCH, 'Запрос на поиск записи по изображению ранее зарегистрированного лица'),
+    ]
+
+    ERROR = 2
+    VERSION = 3
+    DELETE_OK = 10
+    ENROLL_OK = 11
+    SEARCH_OK = 12
+    DUBLICATE = 13
+    LOW_QUALITY = 14
+    NO_MATCH = 15
+
+    RESPONSE_TYPE = [
+        (UNKNOWN, 'Не существующий тип пакета'),
+        (UNSUPPORTED, 'Запрошенная команда не поддерживается'),
+        (ERROR, 'Ошибка при выполнении запроса'),
+        (VERSION, 'Запрос версии или PING сервера'),
+
+        (DELETE_OK, 'Удаление отпечатка выполнено успешно'),
+        (ENROLL_OK, 'Регистрация выполнена успешно'),
+        (SEARCH_OK, 'Найдено совпадение'),
+
+        (DUBLICATE, 'Регистрация невозможна так как обнаружено совпадение'),
+        (LOW_QUALITY,
+         'Идентификация невозможна из-за низкого качества идентификационных данных'),
+        (NO_MATCH, 'Совпадение не обнаружено среди ранее зарегистрированных шаблонов'),
+    ]
+
+    ALGORITHM_FINGER_3 = 1
+    ALGORITHM_FINGER_1 = 2
+    ALGORITHM_FINGER_2 = 3
+    ALGORITHM_FACE = 4
+    ALGORITHM_CARD = 5
+
+    ALGORITHM_TYPE = [
+        (UNKNOWN, 'Не существующий тип пакета'),
+
+        (ALGORITHM_FINGER_3, 'По отпечатку, возможно в основе его лежит стороний алгоритм'),
+        (ALGORITHM_FINGER_1, 'По отпечатку, основной используемый алгоритм идентификации'),
+        (ALGORITHM_FINGER_2, 'По отпечатку, не реализован в настоящей сборке'),
+
+        (ALGORITHM_FACE, 'Не распознавание лиц'),
+
+        (ALGORITHM_CARD, 'По номеру карты, дополнительный используемый алгоритм идентификации'),
+    ]
+
     id = models.AutoField(primary_key=True)
     moment = models.DateTimeField(db_column='stamp', auto_now_add=True)
-    request_type = models.IntegerField(db_column='request', default=0)
-    response_type = models.IntegerField(db_column='result', default=0)
+    request_type = models.IntegerField(
+        db_column='request', choices=REQUEST_TYPE,)
+    response_type = models.IntegerField(
+        db_column='result', choices=RESPONSE_TYPE,)
     description = models.CharField(max_length=500, blank=True, null=True)
-    algorithm_type = models.IntegerField(db_column='algorithm', default=0)
+    algorithm_type = models.IntegerField(db_column='algorithm', choices=ALGORITHM_TYPE,)
     employee = models.ForeignKey(
-        'Employee', db_column='usersid', on_delete=models.CASCADE, null=True, default=None)
+        'Employee', db_column='usersid', on_delete=models.CASCADE, null=True)
     device = models.ForeignKey(
-        'Device', db_column='devicesid', on_delete=models.CASCADE, null=True, default=None)
-    templatesid = models.IntegerField(default=0, null=True)
+        'Device', db_column='devicesid', on_delete=models.CASCADE, null=True)
+    templatesid = models.IntegerField(null=True)
 
     def __str__(self):
         return ('id[%s] [%s] with [%s] in [%s] do [%s] with result [%s] (%s)'

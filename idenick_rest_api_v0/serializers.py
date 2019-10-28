@@ -250,6 +250,10 @@ class EmployeeRequestSerializer(serializers.ModelSerializer):
     employee = serializers.PrimaryKeyRelatedField(read_only=True)
     device = serializers.PrimaryKeyRelatedField(read_only=True)
 
+    request_type = serializers.ReadOnlyField(source='get_request_type_display')
+    response_type = serializers.ReadOnlyField(source='get_response_type_display')
+    algorithm_type = serializers.ReadOnlyField(source='get_algorithm_type_display')
+
     class Meta:
         model = EmployeeRequest
         fields = [
