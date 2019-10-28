@@ -35,7 +35,7 @@ urlpatterns += [
     url(
         '(?P<master_name>\\w+)/(?P<master_id>[0-9]+)/other(?P<slave_name>\\w+)s/', RelationsUtils.get_non_related),
     url(
-        'devices/(?P<device_id>[0-9]+)/makePhoto/', MqttUtils.make_photo),
+        'devices/(?P<device_id>[0-9]+)/createBiometry/', MqttUtils.create_biometry),
     url(
-        'employees/(?P<employee_id>[0-9]+)/savePhoto/', MqttUtils.registrate_photo),
+        'employees/(?P<employee_id>[0-9]+)/registrateBiometry/', MqttUtils.registrate),
 ]

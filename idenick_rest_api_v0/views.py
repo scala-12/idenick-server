@@ -1444,18 +1444,25 @@ class MqttUtils:
 
     @staticmethod
     @api_view(['POST'])
-    def registrate_photo(request, employee_id):
+    def registrate(request, employee_id):
         employee = get_object_or_404(Employee.objects.all(), pk=employee_id)
-        photo_b64 = request.POST.get('photo')
+        biometry_data = request.POST.get('biometryData')
         mqtt_id = request.POST.get('mqtt')
 
         publish_topic = MqttUtils.PUBLISH_TOPIC_THREAD + mqtt_id
         subscribe_topic = MqttUtils.SUBSCRIBE_TOPIC_THREAD + mqtt_id
+
         user_info = ('%s,%s,%s'
                      % (employee.last_name, employee.first_name, employee.patronymic,))
 
-        mqtt_command = ('!FACE_ENROLL,0,' + user_info +
-                        '\r\n').encode('utf-8') + base64.b64decode(photo_b64)
+        mqtt_command = None
+        if mqtt_id.startswith('05'):
+            biometry_data = base64.b64decode(biometry_data)
+            mqtt_command = ('!FACE_ENROLL,0,' + user_info +
+                            '\r\n').encode('utf-8') + biometry_data
+        elif mqtt_id.startswith('07'):
+            mqtt_command = ('!IDENROLL,0,' + ',' + user_info + ',' +
+                            biometry_data + '\r\n').encode('utf-8')
 
         def on_connect(client, userdata, flags, rc, topic):
             MqttUtils._on_connect(client, userdata, flags, rc)
@@ -1472,11 +1479,13 @@ class MqttUtils:
             payload_str = str(msg.payload)
             employee_name = None
             if '!DUPLICATE,' in payload_str:
-                client_info.update(photo=False)
-                employee_name = msg.payload[13:].decode('utf-8').split(',')[0:3]
+                client_info.update(biometry_status=False)
+                employee_name = msg.payload[13:].decode(
+                    'utf-8').split(',')[0:3]
             elif '!ENROLL_OK,' in payload_str:
-                client_info.update(photo=True)
-                employee_name = msg.payload[13:].decode('utf-8').split(',')[0:3]
+                client_info.update(biometry_status=True)
+                employee_name = msg.payload[13:].decode(
+                    'utf-8').split(',')[0:3]
 
             if employee_name is not None:
                 employee = Employee.objects.filter(
@@ -1490,10 +1499,11 @@ class MqttUtils:
                 client.disconnect()
 
         payloads_info = {'msg_list': [], 'count': 0}
-        client_info = {'photo': None, 'subscribed': False, 'employee': None, }
+        client_info = {'biometry_status': None,
+                       'subscribed': False, 'employee': None, }
 
         client = mqtt.Client(
-            client_id=(mqtt_id + ' photo_endroll'), clean_session=True, transport="tcp")
+            client_id=(mqtt_id + ' biometry_endroll'), clean_session=True, transport="tcp")
         client.on_disconnect = MqttUtils._on_disconnect
         client.on_connect = lambda client, userdata, flags, rc: on_connect(
             client, userdata, flags, rc, subscribe_topic)
@@ -1504,33 +1514,64 @@ class MqttUtils:
             on_subscribe(client, userdata, mid,
                          granted_qos, publish_topic, client_info, mqtt_command)
 
-        client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+        connect(client)
 
         waiting = 0
-        while (waiting < 20) and client_info.get('photo') is None:
+        while (waiting < 20) and client_info.get('biometry_status') is None:
             client.loop(timeout=4.0)
             waiting += 1
 
         result = {'success': None, 'msg': None, 'employeer': None}
-        if client_info.get('photo') is None:
+        if client_info.get('biometry_status') is None:
             search_client.disconnect()
             result.update(success=False)
         else:
-            result.update(success=client_info.get('photo'))
+            result.update(success=client_info.get('biometry_status'))
             result.update(employeer=client_info.get('employeer'))
-            if not client_info.get('photo'):
+            if not client_info.get('biometry_status'):
                 result.update(msg='Дубликат')
 
         return Response(result)
 
     @staticmethod
     @api_view(['GET'])
-    def make_photo(request, device_id):
+    def create_biometry(request, device_id):
         device = get_object_or_404(Device.objects.all(), pk=device_id)
+        biometry_info = {
+            'success': None,
+            'msg': None,
+            'employee': None,
+            'data': None,
+            'mqtt': device.mqtt,
+            'isFace': False,
+            'isFinger': False,
+            'isCard': False
+        }
 
+        if device.mqtt.startswith('05'):
+            biometry_info.update(MqttUtils._make_photo(device))
+            biometry_info.update(isFace=True)
+        elif device.mqtt.startswith('07'):
+            biometry_info.update(isCard=True)
+
+        return Response(biometry_info)
+
+    @staticmethod
+    def _make_photo(device):
         publish_topic = MqttUtils.PUBLISH_TOPIC_THREAD + device.mqtt
         subscribe_topic = MqttUtils.SUBSCRIBE_TOPIC_THREAD + device.mqtt
         subscribe_info = {'one': False, 'two': False}
+
+        def connect(client):
+            count = 0
+            connected = False
+            while (not connected) and (count < 3):
+                try:
+                    client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+                    connected = True
+                except:
+                    pass
+                count += 1
 
         def publish_command():
             def p_connect_callback(p_client, p_userdata, p_flags, p_rc):
@@ -1542,7 +1583,8 @@ class MqttUtils:
             p_client.on_disconnect = MqttUtils._on_disconnect
             p_client.on_connect = p_connect_callback
             p_client.on_publish = lambda client, userdata, result: client.disconnect()
-            p_client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+
+            connect(p_client)
             p_client.loop_forever()
 
         def s1_subscribe_callback(client, userdata, mid, granted_qos, subscribe_info):
@@ -1629,8 +1671,8 @@ class MqttUtils:
             s_message_callback(client, userdata, msg,
                                payloads_info, photo_payload)
 
-        s1_client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
-        s2_client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+        connect(s1_client)
+        connect(s2_client)
 
         subscribe_waiting = 0
         while (subscribe_waiting < 25) and not (subscribe_info.get('one') and subscribe_info.get('two')):
@@ -1658,11 +1700,10 @@ class MqttUtils:
         s1_client.disconnect()
         s2_client.disconnect()
 
-        result = {'success': None, 'msg': None, 'mqtt': device.mqtt}
-        data = {'photo_b64': None}
+        result = {'data': None, 'success': None, 'msg': None}
         if photo_payload.get('data') is not None:
             photo_data = photo_payload.get('data')
-            data.update(photo_b64=base64.b64encode(photo_data))
+            result.update(data=base64.b64encode(photo_data))
 
         result.update(success=(not with_error) and (
             photo_payload.get('success') is True))
@@ -1674,6 +1715,4 @@ class MqttUtils:
         if photo_payload.get('msg') is not None:
             result.update(msg=photo_payload.get('msg'))
 
-        result.update(data=data)
-
-        return Response(result)
+        return result
