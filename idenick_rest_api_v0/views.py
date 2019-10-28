@@ -1449,30 +1449,81 @@ class MqttUtils:
     def registrate_photo(request, employee_id):
         employee = get_object_or_404(Employee.objects.all(), pk=employee_id)
         photo_b64 = request.POST.get('photo')
+        mqtt_id = request.POST.get('mqtt')
 
-        mqtt_command = ('!FACE_ENROLL,0,%s,%s,%s\r\n' % (
-            employee.last_name, employee.first_name, employee.patronymic, )) + str(base64.b64decode(photo_b64))[2:-1]
-        # mqtt_command = '!FACE_ENROLL,0,калашников,владислав,вячеславович\n' + \
-        #     str(base64.b64decode(photo_b64))[2:-1]
+        publish_topic = MqttUtils.PUBLISH_TOPIC_THREAD + mqtt_id
+        subscribe_topic = MqttUtils.SUBSCRIBE_TOPIC_THREAD + mqtt_id
+        user_info = ('%s,%s,%s'
+                     % (employee.last_name, employee.first_name, employee.patronymic,))
 
-        payloads_info = {'msg_list': [], 'count': 0}
+        mqtt_command = ('!FACE_ENROLL,0,' + user_info +
+                        '\r\n').encode('utf-8') + base64.b64decode(photo_b64)
 
-        def message_callback(client, userdata, msg):
+        def on_connect(client, userdata, flags, rc, topic):
+            MqttUtils._on_connect(client, userdata, flags, rc)
+            client.subscribe(topic, qos=0)
+
+        def on_subscribe(client, userdata, mid, granted_qos, topic, client_info, mqtt_command):
+            MqttUtils._on_subscribe(client, userdata, mid, granted_qos)
+            client.publish(topic, mqtt_command)
+            client_info.update(subscribed=True)
+
+        def on_message(client, userdata, msg, payloads_info, client_info):
             MqttUtils._on_message(client, userdata, msg, payloads_info)
 
-        client = mqtt.Client(client_id=device.mqtt,
-                             clean_session=True, transport="tcp")
-        client.on_connect = MqttUtils._on_connect
-        client.on_message = message_callback
+            payload_str = str(msg.payload)
+            employee_name = None
+            if '!DUPLICATE,' in payload_str:
+                client_info.update(photo=False)
+                employee_name = msg.payload[13:].decode('utf-8').split(',')[0:3]
+            elif '!ENROLL_OK,' in payload_str:
+                client_info.update(photo=True)
+                employee_name = msg.payload[13:].decode('utf-8').split(',')[0:3]
 
-        # client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+            if employee_name is not None:
+                employee = Employee.objects.filter(
+                    last_name=employee_name[0], first_name=employee_name[1],
+                    patronymic=employee_name[2])
 
-        # client.loop_start()
+                if employee.exists():
+                    client_info.update(
+                        employee={employee.first().id: ' '.join(employee_name)})
 
-        # client.publish(MqttUtils.PUBLISH_TOPIC_THREAD, mqtt_command)
-        # client.publish(MqttUtils.SUBSCRIBE_TOPIC_THREAD, mqtt_command)
+                client.disconnect()
 
-        return Response({'success': False})
+        payloads_info = {'msg_list': [], 'count': 0}
+        client_info = {'photo': None, 'subscribed': False, 'employee': None, }
+
+        client = mqtt.Client(
+            client_id=(mqtt_id + ' photo_endroll'), clean_session=True, transport="tcp")
+        client.on_disconnect = MqttUtils._on_disconnect
+        client.on_connect = lambda client, userdata, flags, rc: on_connect(
+            client, userdata, flags, rc, subscribe_topic)
+        client.on_message = lambda client, userdata, msg: \
+            on_message(client, userdata, msg,
+                       payloads_info, client_info)
+        client.on_subscribe = lambda client, userdata, mid, granted_qos: \
+            on_subscribe(client, userdata, mid,
+                         granted_qos, publish_topic, client_info, mqtt_command)
+
+        client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+
+        waiting = 0
+        while (waiting < 20) and client_info.get('photo') is None:
+            client.loop(timeout=4.0)
+            waiting += 1
+
+        result = {'success': None, 'msg': None, 'employeer': None}
+        if client_info.get('photo') is None:
+            search_client.disconnect()
+            result.update(success=False)
+        else:
+            result.update(success=client_info.get('photo'))
+            result.update(employeer=client_info.get('employeer'))
+            if not client_info.get('photo'):
+                result.update(msg='Дубликат')
+
+        return Response(result)
 
     @staticmethod
     @api_view(['GET'])
