@@ -1461,7 +1461,7 @@ class MqttUtils:
             mqtt_command = ('!FACE_ENROLL,0,' + user_info +
                             '\r\n').encode('utf-8') + biometry_data
         elif mqtt_id.startswith('07'):
-            mqtt_command = ('!IDENROLL,0,' + ',' + user_info + ',' +
+            mqtt_command = ('!IDENROLL,0,' + user_info + ',' +
                             biometry_data + '\r\n').encode('utf-8')
 
         def on_connect(client, userdata, flags, rc, topic):
@@ -1481,11 +1481,11 @@ class MqttUtils:
             if '!DUPLICATE,' in payload_str:
                 client_info.update(biometry_status=False)
                 employee_name = msg.payload[13:].decode(
-                    'utf-8').split(',')[0:3]
+                    'utf-8').strip().split(',')[0:3]
             elif '!ENROLL_OK,' in payload_str:
                 client_info.update(biometry_status=True)
                 employee_name = msg.payload[13:].decode(
-                    'utf-8').split(',')[0:3]
+                    'utf-8').strip().split(',')[0:3]
 
             if employee_name is not None:
                 employee = Employee.objects.filter(
@@ -1514,20 +1514,20 @@ class MqttUtils:
             on_subscribe(client, userdata, mid,
                          granted_qos, publish_topic, client_info, mqtt_command)
 
-        connect(client)
+        MqttUtils.connect(client)
 
         waiting = 0
         while (waiting < 20) and client_info.get('biometry_status') is None:
             client.loop(timeout=4.0)
             waiting += 1
 
-        result = {'success': None, 'msg': None, 'employeer': None}
+        result = {'success': None, 'msg': None, 'employee': None}
         if client_info.get('biometry_status') is None:
             search_client.disconnect()
             result.update(success=False)
         else:
             result.update(success=client_info.get('biometry_status'))
-            result.update(employeer=client_info.get('employeer'))
+            result.update(employee=client_info.get('employee'))
             if not client_info.get('biometry_status'):
                 result.update(msg='Дубликат')
 
@@ -1552,26 +1552,144 @@ class MqttUtils:
             biometry_info.update(MqttUtils._make_photo(device))
             biometry_info.update(isFace=True)
         elif device.mqtt.startswith('07'):
+            biometry_info.update(MqttUtils._read_card(device))
             biometry_info.update(isCard=True)
 
         return Response(biometry_info)
+
+    @staticmethod
+    def _read_card(device):
+        def on_connect(client, userdata, flags, rc, topic):
+            MqttUtils._on_connect(client, userdata, flags, rc)
+            client.subscribe(topic, qos=0)
+
+        def l_on_subscribe(client, userdata, mid, granted_qos, client_info):
+            MqttUtils._on_subscribe(client, userdata, mid, granted_qos)
+            client_info.update(subscribed=True)
+
+        def l_on_message(client, userdata, msg, payloads_info, client_info):
+            MqttUtils._on_message(client, userdata, msg, payloads_info)
+
+            if '!IDSEARCH,' in str(msg.payload[:20]):
+                client_info.update(biometry_data=msg.payload[12:].decode('utf-8').strip())
+                client.disconnect()
+
+        payloads_info = {'msg_list': [], 'count': 0}
+        client_info = {'is_dublicate': None,
+                       'subscribed': False, 'biometry_data': None, 'employee': None, }
+
+        subscribe_topic = MqttUtils.SUBSCRIBE_TOPIC_THREAD + device.mqtt
+
+        listener = mqtt.Client(
+            client_id=(device.mqtt + ' card_listener'), clean_session=True, transport="tcp")
+        listener.on_disconnect = MqttUtils._on_disconnect
+        listener.on_connect = lambda client, userdata, flags, rc: on_connect(
+            client, userdata, flags, rc, subscribe_topic)
+        listener.on_message = lambda client, userdata, msg: \
+            l_on_message(client, userdata, msg, payloads_info, client_info)
+        listener.on_subscribe = lambda client, userdata, mid, granted_qos: \
+            l_on_subscribe(client, userdata, mid, granted_qos, client_info)
+
+        MqttUtils.connect(listener)
+
+        waiting = 0
+        while (waiting < 20) and client_info.get('biometry_data') is None:
+            listener.loop(timeout=4.0)
+            waiting += 1
+        if client_info.get('biometry_data') is None:
+            listener.disconnect()
+        else:
+            def s_on_subscribe(client, userdata, mid, granted_qos, client_info):
+                MqttUtils._on_subscribe(client, userdata, mid, granted_qos)
+
+                def p_on_connect(client, userdata, flags, rc, topic, card):
+                    MqttUtils._on_connect(client, userdata, flags, rc)
+                    client.publish(topic, '!IDSEARCH,0,' + card + '\r\n')
+
+                publish_topic = MqttUtils.PUBLISH_TOPIC_THREAD + device.mqtt
+                p_client = mqtt.Client(
+                    client_id=(publish_topic + ' card_search_publisher'),
+                    clean_session=True, transport="tcp")
+                p_client.on_disconnect = MqttUtils._on_disconnect
+                p_client.on_connect = lambda client, userdata, flags, rc: \
+                    p_on_connect(client, userdata, flags,
+                                 rc, publish_topic, client_info.get('biometry_data'))
+                p_client.on_publish = lambda client, userdata, result: client.disconnect()
+
+                MqttUtils.connect(p_client)
+                p_client.loop_forever()
+
+            def s_on_message(client, userdata, msg, payloads_info, client_info):
+                MqttUtils._on_message(client, userdata, msg, payloads_info)
+                payload_prefix = str(msg.payload[:20])
+                if '!SEARCH_OK,' in payload_prefix:
+                    search_ok_msg = msg.payload[13:].decode('utf-8').strip().split(',')
+
+                    employee = Employee.objects.filter(
+                        last_name=search_ok_msg[0], first_name=search_ok_msg[1],
+                        patronymic=search_ok_msg[2])
+
+                    if employee.exists():
+                        client_info.update(
+                            employee={employee.first().id: ' '.join(search_ok_msg[0:3])})
+                    client_info.update(is_dublicate=True)
+                elif '!NOMATCH,' in payload_prefix:
+                    client_info.update(is_dublicate=False)
+
+                if client_info.get('is_dublicate') is not None:
+                    client.disconnect()
+
+            searcher = mqtt.Client(
+                client_id=(device.mqtt + ' card_searcher'), clean_session=True, transport="tcp")
+            searcher.on_disconnect = MqttUtils._on_disconnect
+            searcher.on_connect = lambda client, userdata, flags, rc: on_connect(
+                client, userdata, flags, rc, subscribe_topic)
+            searcher.on_message = lambda client, userdata, msg: \
+                s_on_message(client, userdata, msg, payloads_info, client_info)
+            searcher.on_subscribe = lambda client, userdata, mid, granted_qos: \
+                s_on_subscribe(client, userdata, mid, granted_qos, client_info)
+
+            MqttUtils.connect(searcher)
+
+            waiting = 0
+            while (waiting < 20) and client_info.get('is_dublicate') is None:
+                searcher.loop(timeout=4.0)
+                waiting += 1
+            if client_info.get('is_dublicate') is None:
+                searcher.disconnect()
+
+        result = {'data': None, 'success': None, 'msg': None}
+
+        if client_info.get('biometry_data') is None:
+            result.update(success=False)
+            if not client_info.get('subscribed'):
+                result.update(msg='Устройство не отвечает')
+        else:
+            result.update(success=(not client_info.get('is_dublicate')))
+            result.update(data=client_info.get('biometry_data'))
+            result.update(employee=client_info.get('employee'))
+            if client_info.get('is_dublicate'):
+                result.update(msg='Дубликат')
+
+        return result
+
+    @staticmethod
+    def connect(client):
+        count = 0
+        connected = False
+        while (not connected) and (count < 3):
+            try:
+                client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
+                connected = True
+            except:
+                pass
+            count += 1
 
     @staticmethod
     def _make_photo(device):
         publish_topic = MqttUtils.PUBLISH_TOPIC_THREAD + device.mqtt
         subscribe_topic = MqttUtils.SUBSCRIBE_TOPIC_THREAD + device.mqtt
         subscribe_info = {'one': False, 'two': False}
-
-        def connect(client):
-            count = 0
-            connected = False
-            while (not connected) and (count < 3):
-                try:
-                    client.connect(MqttUtils.HOST, MqttUtils.PORT, 60)
-                    connected = True
-                except:
-                    pass
-                count += 1
 
         def publish_command():
             def p_connect_callback(p_client, p_userdata, p_flags, p_rc):
@@ -1584,7 +1702,7 @@ class MqttUtils:
             p_client.on_connect = p_connect_callback
             p_client.on_publish = lambda client, userdata, result: client.disconnect()
 
-            connect(p_client)
+            MqttUtils.connect(p_client)
             p_client.loop_forever()
 
         def s1_subscribe_callback(client, userdata, mid, granted_qos, subscribe_info):
@@ -1621,12 +1739,12 @@ class MqttUtils:
             elif '!ERROR,' in payload_str:
                 photo_payload.update(success=False)
                 if 'System.NullReferenceException' in payload_str:
-                    photo_payload.update(msg=msg.payload[9:-2].decode('utf-8'))
+                    photo_payload.update(msg=msg.payload[9:-2].decode('utf-8').strip())
             elif '!NOMATCH,' in payload_str:
                 photo_payload.update(success=True)
             elif '!SEARCH_OK,' in payload_str:
                 photo_payload.update(success=False)
-                search_ok_msg = msg.payload[13:].decode('utf-8').split(',')
+                search_ok_msg = msg.payload[13:].decode('utf-8').strip().split(',')
 
                 employee = Employee.objects.filter(
                     last_name=search_ok_msg[0], first_name=search_ok_msg[1],
@@ -1671,8 +1789,8 @@ class MqttUtils:
             s_message_callback(client, userdata, msg,
                                payloads_info, photo_payload)
 
-        connect(s1_client)
-        connect(s2_client)
+        MqttUtils.connect(s1_client)
+        MqttUtils.connect(s2_client)
 
         subscribe_waiting = 0
         while (subscribe_waiting < 25) and not (subscribe_info.get('one') and subscribe_info.get('two')):
