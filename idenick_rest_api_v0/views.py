@@ -578,9 +578,16 @@ class EmployeeViewSet(_AbstractViewSet):
             employee = Employee(**serializer.data)
             employee.save()
 
+            organization = None
             if login.role == Login.REGISTRATOR:
+                organization = login.organization_id
+            elif login.role == Login.ADMIN:
+                organization = _get_request_param(
+                    request, 'organization', is_int=True)
+
+            if organization is not None:
                 Employee2Organization.objects.create(
-                    **{'organization_id': login.organization_id, 'employee_id': employee.id})
+                    **{'organization_id': organization, 'employee_id': employee.id})
 
             result = self._response4update_n_create(
                 data=employee, code=status.HTTP_201_CREATED)
@@ -816,9 +823,16 @@ class DeviceViewSet(_AbstractViewSet):
             device = Device(**serializer.data)
             device.save()
 
+            organization = None
             if login.role == Login.REGISTRATOR:
+                organization = login.organization_id
+            elif login.role == Login.ADMIN:
+                organization = _get_request_param(
+                    request, 'organization', is_int=True)
+
+            if organization is not None:
                 Device2Organization.objects.create(
-                    **{'organization_id': login.organization_id, 'device_id': device.id})
+                    **{'organization_id': organization, 'device_id': device.id})
 
             result = self._response4update_n_create(
                 data=device, code=status.HTTP_201_CREATED)
@@ -926,9 +940,17 @@ class DeviceGroupViewSet(_AbstractViewSet):
             group.save()
 
             login = _LoginMethods.get_login(request.user)
+
+            organization = None
             if login.role == Login.REGISTRATOR:
+                organization = login.organization_id
+            elif login.role == Login.ADMIN:
+                organization = _get_request_param(
+                    request, 'organization', is_int=True)
+
+            if organization is not None:
                 DeviceGroup2Organization.objects.create(
-                    **{'organization_id': login.organization_id,
+                    **{'organization_id': organization,
                        'device_group_id': group.id})
 
             result = self._response4update_n_create(
@@ -1571,7 +1593,8 @@ class MqttUtils:
             MqttUtils._on_message(client, userdata, msg, payloads_info)
 
             if '!IDSEARCH,' in str(msg.payload[:20]):
-                client_info.update(biometry_data=msg.payload[12:].decode('utf-8').strip())
+                client_info.update(
+                    biometry_data=msg.payload[12:].decode('utf-8').strip())
                 client.disconnect()
 
         payloads_info = {'msg_list': [], 'count': 0}
@@ -1623,7 +1646,8 @@ class MqttUtils:
                 MqttUtils._on_message(client, userdata, msg, payloads_info)
                 payload_prefix = str(msg.payload[:20])
                 if '!SEARCH_OK,' in payload_prefix:
-                    search_ok_msg = msg.payload[13:].decode('utf-8').strip().split(',')
+                    search_ok_msg = msg.payload[13:].decode(
+                        'utf-8').strip().split(',')
 
                     employee = Employee.objects.filter(
                         last_name=search_ok_msg[0], first_name=search_ok_msg[1],
@@ -1739,12 +1763,14 @@ class MqttUtils:
             elif '!ERROR,' in payload_str:
                 photo_payload.update(success=False)
                 if 'System.NullReferenceException' in payload_str:
-                    photo_payload.update(msg=msg.payload[9:-2].decode('utf-8').strip())
+                    photo_payload.update(
+                        msg=msg.payload[9:-2].decode('utf-8').strip())
             elif '!NOMATCH,' in payload_str:
                 photo_payload.update(success=True)
             elif '!SEARCH_OK,' in payload_str:
                 photo_payload.update(success=False)
-                search_ok_msg = msg.payload[13:].decode('utf-8').strip().split(',')
+                search_ok_msg = msg.payload[13:].decode(
+                    'utf-8').strip().split(',')
 
                 employee = Employee.objects.filter(
                     last_name=search_ok_msg[0], first_name=search_ok_msg[1],
