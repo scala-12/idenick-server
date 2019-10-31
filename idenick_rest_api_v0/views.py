@@ -834,6 +834,12 @@ class DeviceViewSet(_AbstractViewSet):
                 Device2Organization.objects.create(
                     **{'organization_id': organization, 'device_id': device.id})
 
+            device_group = _get_request_param(
+                request, 'deviceGroup', is_int=True)
+            if device_group is not None:
+                Device2DeviceGroup.objects.create(
+                    **{'device_group_id': device_group, 'device_id': device.id})
+
             result = self._response4update_n_create(
                 data=device, code=status.HTTP_201_CREATED)
         else:
@@ -951,6 +957,13 @@ class DeviceGroupViewSet(_AbstractViewSet):
             if organization is not None:
                 DeviceGroup2Organization.objects.create(
                     **{'organization_id': organization,
+                       'device_group_id': group.id})
+
+            device = _get_request_param(
+                request, 'device', is_int=True)
+            if device is not None:
+                Device2DeviceGroup.objects.create(
+                    **{'device_id': device,
                        'device_group_id': group.id})
 
             result = self._response4update_n_create(
