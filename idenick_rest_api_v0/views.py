@@ -1454,6 +1454,11 @@ class MqttUtils:
     PUBLISH_TOPIC_THREAD = '/BIOID/CLIENT/'
     PATH = '/mqtt'
 
+    class BiometryType(Enum):
+        FACE = 'FACE'
+        FINGER = 'FINGER'
+        CARD = 'CARD'
+
     @staticmethod
     def _on_connect(client, userdata, flags, rc):
         print(client._client_id.decode('utf-8') + " Connected to %s:%s%s with result code %s" % (
@@ -1483,6 +1488,7 @@ class MqttUtils:
         employee = get_object_or_404(Employee.objects.all(), pk=employee_id)
         biometry_data = request.POST.get('biometryData')
         mqtt_id = request.POST.get('mqtt')
+        biometry_type = MqttUtils.BiometryType(request.POST.get('type'))
 
         publish_topic = MqttUtils.PUBLISH_TOPIC_THREAD + mqtt_id
         subscribe_topic = MqttUtils.SUBSCRIBE_TOPIC_THREAD + mqtt_id
@@ -1491,14 +1497,14 @@ class MqttUtils:
                      % (employee.last_name, employee.first_name, employee.patronymic,))
 
         mqtt_command = None
-        if mqtt_id.startswith('05'):
+        if biometry_type is MqttUtils.BiometryType.FACE:
             biometry_data = base64.b64decode(biometry_data)
             mqtt_command = ('!FACE_ENROLL,0,' + user_info +
                             '\r\n').encode('utf-8') + biometry_data
-        elif mqtt_id.startswith('07'):
+        elif biometry_type is MqttUtils.BiometryType.CARD:
             mqtt_command = ('!IDENROLL,0,' + user_info + ',' +
                             biometry_data + '\r\n').encode('utf-8')
-        else:
+        elif biometry_type is MqttUtils.BiometryType.FINGER:
             biometry_data = base64.b64decode(biometry_data)
             mqtt_command = ('!ENROLL,0,' + user_info +
                             '\r\n').encode('utf-8') + biometry_data
@@ -1562,7 +1568,7 @@ class MqttUtils:
 
         result = {'success': None, 'msg': None, 'employee': None}
         if client_info.get('biometry_status') is None:
-            search_client.disconnect()
+            client.disconnect()
             result.update(success=False)
         else:
             result.update(success=client_info.get('biometry_status'))
@@ -1595,7 +1601,7 @@ class MqttUtils:
             biometry_info.update(isCard=True)
         else:
             biometry_info.update(MqttUtils._read_finger(device))
-            biometry_info.update(isFinger=not device.mqtt.startswith('07'))
+            biometry_info.update(isFinger=True)
 
         return Response(biometry_info)
 
@@ -1904,7 +1910,7 @@ class MqttUtils:
             payload_str = str(msg.payload[0:20])[2:]
             if '!SEARCH,' in payload_str:
                 client_info.update(
-                    biometry_data=msg.payload[11 + payload_str[8:].index(','):])
+                    biometry_data=msg.payload[payload_str.index('\\r\\n') + 2:])
                 client.disconnect()
             elif '!NOMATCH,' in payload_str:
                 client_info.update(is_dublicate=False)
