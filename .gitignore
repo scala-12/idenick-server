@@ -4,8 +4,7 @@
 
 /idenick_app/migrations/__pycache__
 
-/idenick_app/__pycache__
-/idenick_project/__pycache__
-/idenick_rest_api_v0/__pycache__
+__pycache__
+
 /static
 /assets
