@@ -137,8 +137,8 @@ class _Connection:
                 if connected:
                     self.loop()
                 else:
-                    connected = True
                     self._client.connect(HOST, PORT, 60)
+                    connected = True
             except Exception as e:
                 # handle any other exception
                 print("Error  occured. Arguments {0}.".format(
@@ -207,7 +207,7 @@ def registrate_biometry(employee: Employee, mqtt_id: str, biometry_data: str,
             client.disconnect()
 
     connection = _Connection(
-        device_mqtt + ' biometry_endroll',
+        client_id=(device_mqtt + ' biometry_endroll'),
         on_connect=on_connect,
         on_subscribe=on_subscribe,
         on_message=on_message,)
