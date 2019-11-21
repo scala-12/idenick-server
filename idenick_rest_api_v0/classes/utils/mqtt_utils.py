@@ -191,18 +191,19 @@ def registrate_biometry(employee: Employee, mqtt_id: str, biometry_data: str,
 
     def on_message(client, msg):
         payload_str = str(msg.payload)
-        if ('!DUPLICATE,' in payload_str) or ('!ENROLL_OK,' in payload_str):
+        if ('!DUPLICATE,' in payload_str) or ('!ENROLL_OK,' in payload_str)\
+                or ('!LOWTQ,' in payload_str):
             result_msg = msg.payload.decode('utf-8').strip()
 
-            employee_info = result_msg.split(',')[6]
-
-            employee = Employee.objects.filter(
-                last_name=employee_info[0], first_name=employee_info[1],
-                patronymic=employee_info[2])
+            if '!LOWTQ,' not in payload_str:
+                employee_info = result_msg.split(',')[6]
+                employee = Employee.objects.filter(
+                    last_name=employee_info[0], first_name=employee_info[1],
+                    patronymic=employee_info[2])
+                client_info.update(employee=employee.first())
 
             client_info.update(command=result_msg)
-            client_info.update(disabled='!DUPLICATE,' in result_msg)
-            client_info.update(employee=employee.first())
+            client_info.update(disabled='!ENROLL_OK,' not in result_msg)
 
             client.disconnect()
 
