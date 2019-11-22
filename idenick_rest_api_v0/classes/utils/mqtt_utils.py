@@ -7,6 +7,7 @@ from typing import Optional
 import paho.mqtt.client as mqtt
 
 from idenick_app.models import Employee
+from idenick_rest_api_v0.serializers import EmployeeSerializers
 
 USE_SSL = False
 USERNAME = None
@@ -122,7 +123,12 @@ class _Connection:
 
     def loop(self) -> None:
         """call client.loop(4.0)"""
-        self._client.loop(timeout=4.0)
+        try:
+            self._client.loop(timeout=4.0)
+        except Exception as e:
+            # handle any other exception
+            print("Error  occured. Arguments {0}.".format(
+                e.args))
 
     def disconnect(self) -> None:
         """call client.disconnect()"""
@@ -196,10 +202,16 @@ def registrate_biometry(employee: Employee, mqtt_id: str, biometry_data: str,
             result_msg = msg.payload.decode('utf-8').strip()
 
             if '!LOWTQ,' not in payload_str:
-                employee_info = result_msg.split(',')[6]
-                employee = Employee.objects.filter(
-                    last_name=employee_info[0], first_name=employee_info[1],
-                    patronymic=employee_info[2])
+                employee_info = result_msg.split(',')[2:6]
+
+                employee = None
+                if '!DUPLICATE,' in result_msg:
+                    employee = Employee.objects.filter(id=employee_info[3])
+                else:
+                    employee = Employee.objects.filter(
+                        last_name=employee_info[0], first_name=employee_info[1],
+                        patronymic=employee_info[2])
+
                 client_info.update(employee=employee.first())
 
             client_info.update(command=result_msg)
@@ -219,17 +231,21 @@ def registrate_biometry(employee: Employee, mqtt_id: str, biometry_data: str,
     if connection.is_connected():
         waiting = 0
         while (waiting < 20) and (client_info.get('disabled') is None):
-            connection.loop()
             waiting += 1
+            connection.loop()
 
         if client_info.get('disabled') is None:
-            connection.disconnect()
             result = RegistrationResult(
                 success=False, comment='Результат неизвестен',)
         else:
-            result = RegistrationResult(success=client_info.get('disabled'),
-                                        employee=client_info.get('employee'),
+            employee = None
+            if client_info.get('employee') is not None:
+                employee = EmployeeSerializers.ModelSerializer(
+                    client_info.get('employee')).data
+            result = RegistrationResult(success=not client_info.get('disabled'),
+                                        employee=employee,
                                         comment=client_info.get('command'),)
+        connection.disconnect()
     else:
         result = RegistrationResult(
             comment='Не удается подключиться к серверу',)
