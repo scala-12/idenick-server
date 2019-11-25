@@ -682,7 +682,7 @@ class DeviceViewSet(_AbstractViewSet):
             request, 'deviceGroup', True, base_filter=base_filter)
         if device_group_filter is not None:
             queryset = queryset \
-                .filter(id__in=RelationsUtils.get_relates(Device, 'device_id', Device2DeviceGroup,
+                .filter(id__in=relation_utils.get_relates(Device, 'device_id', Device2DeviceGroup,
                                                           'device_group_id', device_group_filter,
                                                           login).values_list('id', flat=True))
         organization_filter = request_utils.get_request_param(
