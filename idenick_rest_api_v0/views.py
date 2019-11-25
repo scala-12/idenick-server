@@ -971,6 +971,7 @@ def get_non_related(request, master_name, master_id, slave_name):
 
 
 @api_view(['POST'])
+@login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
 def registrate_biometry(request, employee_id):
     """registrate biometry to employee"""
     employee = get_object_or_404(Employee.objects.all(), pk=employee_id)
