@@ -9,8 +9,9 @@ from django.dispatch import receiver
 
 class _AbstractEntry(models.Model):
     id = models.AutoField(primary_key=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    dropped_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(db_column='rcreated', auto_now_add=True)
+    dropped_at = models.DateTimeField(
+        db_column='rdropped', null=True, blank=True)
 
     def save(self, *args, **kwargs):
         if not self.dropped_at:
@@ -21,27 +22,11 @@ class _AbstractEntry(models.Model):
         abstract = True
         ordering = ["created_at"]
 
-
-class _AbstractEntry4Old(models.Model):
-    id = models.AutoField(primary_key=True)
-    created_at = models.DateTimeField(db_column='rcreated', auto_now_add=True)
-    dropped_at = models.DateTimeField(
-        db_column='rdropped', null=True, blank=True)
-
-    def save(self, *args, **kwargs):
-        if not self.dropped_at:
-            self.dropped_at = None
-        super(_AbstractEntry4Old, self).save(*args, **kwargs)
-
-    class Meta:
-        abstract = True
-        ordering = ["created_at"]
-
     def _str(self):
         return 'id[%s] ' % (self.id)
 
 
-class Employee(_AbstractEntry4Old):
+class Employee(_AbstractEntry):
     """Employee model"""
     guid = models.CharField(max_length=50, unique=True,
                             db_column='userid', default=uuid.uuid4)
@@ -60,7 +45,7 @@ class Employee(_AbstractEntry4Old):
         db_table = 'users'
 
 
-class Organization(_AbstractEntry4Old):
+class Organization(_AbstractEntry):
     """Organization model"""
     guid = models.CharField(max_length=50, unique=True, db_column='companyid',
                             default=uuid.uuid4, editable=False)
@@ -78,7 +63,7 @@ class Organization(_AbstractEntry4Old):
         verbose_name = 'Организация'
 
 
-class Department(_AbstractEntry4Old):
+class Department(_AbstractEntry):
     """Department model"""
     organization = models.ForeignKey(
         'Organization', db_column='companyid', related_name='departments', on_delete=models.CASCADE)
@@ -96,7 +81,7 @@ class Department(_AbstractEntry4Old):
         unique_together = (('organization', 'name'),)
 
 
-class Employee2Department(_AbstractEntry4Old):
+class Employee2Department(_AbstractEntry):
     """Model of relation between employee and department"""
     department = models.ForeignKey(
         'Department', db_column='usergroupid', related_name='employees', on_delete=models.CASCADE)
@@ -163,7 +148,7 @@ def save_user_profile(sender, instance, **kwargs):
     instance.login.save()
 
 
-class Device(_AbstractEntry4Old):
+class Device(_AbstractEntry):
     """Device model"""
     mqtt = models.CharField(max_length=255, db_column='mqttid', unique=True,)
     name = models.CharField(max_length=64, verbose_name='название')
@@ -183,7 +168,7 @@ class Device(_AbstractEntry4Old):
         db_table = 'devices'
 
 
-class DeviceGroup(_AbstractEntry4Old):
+class DeviceGroup(_AbstractEntry):
     """Device group model"""
     name = models.CharField(max_length=64, unique=True,
                             verbose_name='название проходной', )
@@ -200,7 +185,7 @@ class DeviceGroup(_AbstractEntry4Old):
         verbose_name = 'Проходная'
 
 
-class DeviceGroup2Organization(_AbstractEntry4Old):
+class DeviceGroup2Organization(_AbstractEntry):
     """Model of relation between device group and organization"""
     device_group = models.ForeignKey(
         'DeviceGroup', db_column='devicegroupsid', related_name='organizations', on_delete=models.CASCADE)
@@ -214,7 +199,7 @@ class DeviceGroup2Organization(_AbstractEntry4Old):
         unique_together = (('device_group', 'organization'),)
 
 
-class Employee2Organization(_AbstractEntry4Old):
+class Employee2Organization(_AbstractEntry):
     """Model of relation between employee and organization"""
     employee = models.ForeignKey(
         'Employee', db_column='usersid', related_name='organizations', on_delete=models.CASCADE)
@@ -228,7 +213,7 @@ class Employee2Organization(_AbstractEntry4Old):
         unique_together = (('employee', 'organization'),)
 
 
-class Device2DeviceGroup(_AbstractEntry4Old):
+class Device2DeviceGroup(_AbstractEntry):
     """Model of relation between device and device group"""
     device_group = models.ForeignKey(
         'DeviceGroup', db_column='devicegroupid', related_name='devices', on_delete=models.CASCADE)
@@ -243,7 +228,7 @@ class Device2DeviceGroup(_AbstractEntry4Old):
         db_table = 'devices_devicegroup'
 
 
-class Device2Organization(_AbstractEntry4Old):
+class Device2Organization(_AbstractEntry):
     """Model of relation between device and device group"""
     organization = models.ForeignKey(
         'Organization', db_column='companysid', related_name='devices', on_delete=models.CASCADE)
@@ -261,7 +246,7 @@ class EmployeeRequest(models.Model):
     """Employee request model. READ ONLY"""
     UNKNOWN = 0
     UNSUPPORTED = 1
-    GET_VERSION  = 2
+    GET_VERSION = 2
     PING = 3
 
     FINGER_DELETE = 10
@@ -353,7 +338,8 @@ class EmployeeRequest(models.Model):
     response_type = models.IntegerField(
         db_column='result', choices=RESPONSE_TYPE,)
     description = models.CharField(max_length=500, blank=True, null=True)
-    algorithm_type = models.IntegerField(db_column='algorithm', choices=ALGORITHM_TYPE,)
+    algorithm_type = models.IntegerField(
+        db_column='algorithm', choices=ALGORITHM_TYPE,)
     employee = models.ForeignKey(
         'Employee', db_column='usersid', on_delete=models.CASCADE, null=True)
     device = models.ForeignKey(
