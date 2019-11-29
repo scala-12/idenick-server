@@ -1,4 +1,5 @@
 """models"""
+import datetime
 import uuid
 
 from django.contrib.auth.models import User
@@ -26,6 +27,19 @@ class _AbstractEntry(models.Model):
         return 'id[%s] ' % (self.id)
 
 
+class _AbstractTimezonedEntry(_AbstractEntry):
+    timezone = models.DurationField(default=datetime.timedelta(),)
+
+    def save(self, *args, **kwargs):
+        if (not self.timezone) or (self.timezone > datetime.timedelta(hours=14)) \
+                or (self.timezone < datetime.timedelta(hours=-12)):
+            self.timezone = datetime.timedelta()
+        super(_AbstractTimezonedEntry, self).save(*args, **kwargs)
+
+    class Meta:
+        abstract = True
+
+
 class Employee(_AbstractEntry):
     """Employee model"""
     guid = models.CharField(max_length=50, unique=True,
@@ -45,7 +59,7 @@ class Employee(_AbstractEntry):
         db_table = 'users'
 
 
-class Organization(_AbstractEntry):
+class Organization(_AbstractTimezonedEntry):
     """Organization model"""
     guid = models.CharField(max_length=50, unique=True, db_column='companyid',
                             default=uuid.uuid4, editable=False)
@@ -148,7 +162,7 @@ def save_user_profile(sender, instance, **kwargs):
     instance.login.save()
 
 
-class Device(_AbstractEntry):
+class Device(_AbstractTimezonedEntry):
     """Device model"""
     mqtt = models.CharField(max_length=255, db_column='mqttid', unique=True,)
     name = models.CharField(max_length=64, verbose_name='название')

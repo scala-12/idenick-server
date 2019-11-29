@@ -241,6 +241,7 @@ class OrganizationViewSet(_AbstractViewSet):
             organization.name = update.name
             organization.address = update.address
             organization.phone = update.phone
+            organization.timezone = update.timezone
             organization.save()
             result = self._response4update_n_create(data=organization)
         else:
@@ -771,6 +772,7 @@ class DeviceViewSet(_AbstractViewSet):
             device.name = update.name
             device.description = update.description
             device.config = update.config
+            device.timezone = update.timezone
             device.save()
             result = self._response4update_n_create(data=device)
         else:

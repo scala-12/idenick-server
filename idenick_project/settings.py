@@ -127,7 +127,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/2.2/topics/i18n/
 
-TIME_ZONE = 'Asia/Irkutsk'
+TIME_ZONE = 'Europe/London'
 LANGUAGE_CODE = 'ru-ru'
 
 USE_I18N = True

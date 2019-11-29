@@ -1,8 +1,10 @@
 """Serializers for models"""
+
 from django.contrib.auth.models import User
 from django.http.request import QueryDict
 from rest_framework import serializers
 
+from idenick_app.classes.utils import date_utils
 from idenick_app.models import (Department, Device, Device2DeviceGroup,
                                 Device2Organization, DeviceGroup,
                                 DeviceGroup2Organization, Employee,
@@ -21,14 +23,25 @@ class UserSerializer(serializers.ModelSerializer):
         ]
 
 
+class _TimezoneField(serializers.Field):
+    def to_representation(self, value):
+        return date_utils.str_to_duration_UTC(value)
+
+    def to_internal_value(self, data):
+        return date_utils.str_to_duration_UTC(data)
+
+
 class OrganizationSerializers:
     """Serializers for organization-model"""
     class CreateSerializer(serializers.ModelSerializer):
         """Serializer for create organization-model"""
+        timezone = _TimezoneField()
+
         class Meta:
             model = Organization
             fields = [
                 'name',
+                'timezone',
                 'address',
                 'phone',
             ]
@@ -41,6 +54,10 @@ class OrganizationSerializers:
         employees_count = serializers.SerializerMethodField()
         devices_count = serializers.SerializerMethodField()
         device_groups_count = serializers.SerializerMethodField()
+        timezone = serializers.SerializerMethodField()
+
+        def get_timezone(self, obj):
+            return None if obj.timezone is None else date_utils.duration_UTC_to_str(obj.timezone)
 
         def get_departments_count(self, obj):
             return Department.objects.filter(organization=obj).count()
@@ -75,6 +92,7 @@ class OrganizationSerializers:
                 'employees_count',
                 'devices_count',
                 'device_groups_count',
+                'timezone',
             ]
 
 
@@ -251,8 +269,19 @@ class EmployeeRequestSerializer(serializers.ModelSerializer):
     device = serializers.PrimaryKeyRelatedField(read_only=True)
 
     request_type = serializers.ReadOnlyField(source='get_request_type_display')
-    response_type = serializers.ReadOnlyField(source='get_response_type_display')
-    algorithm_type = serializers.ReadOnlyField(source='get_algorithm_type_display')
+    response_type = serializers.ReadOnlyField(
+        source='get_response_type_display')
+    algorithm_type = serializers.ReadOnlyField(
+        source='get_algorithm_type_display')
+
+    related_moment = serializers.SerializerMethodField()
+
+    def get_related_moment(self, obj: EmployeeRequest):
+        result = obj.moment
+        if obj.device is not None:
+            result = result + obj.device.timezone
+
+        return result
 
     class Meta:
         model = EmployeeRequest
@@ -261,6 +290,7 @@ class EmployeeRequestSerializer(serializers.ModelSerializer):
             'employee',
             'device',
             'moment',
+            'related_moment',
             'request_type',
             'response_type',
             'description',
@@ -330,6 +360,8 @@ class DeviceSerializers:
     """Serializers for device-model"""
     class CreateSerializer(serializers.ModelSerializer):
         """Serializer for create device-model"""
+        timezone = _TimezoneField()
+
         class Meta:
             model = Device
             fields = [
@@ -338,10 +370,13 @@ class DeviceSerializers:
                 'description',
                 'device_type',
                 'config',
+                'timezone',
             ]
 
     class UpdateSerializer(serializers.ModelSerializer):
         """Serializer for update device-model"""
+        timezone = _TimezoneField()
+
         class Meta:
             model = Device
             fields = [
@@ -349,6 +384,7 @@ class DeviceSerializers:
                 'name',
                 'description',
                 'config',
+                'timezone',
             ]
 
     class ModelSerializer(serializers.ModelSerializer):
@@ -356,6 +392,10 @@ class DeviceSerializers:
 
         device_groups_count = serializers.SerializerMethodField()
         organizations_count = serializers.SerializerMethodField()
+        timezone = serializers.SerializerMethodField()
+
+        def get_timezone(self, obj):
+            return None if obj.timezone is None else date_utils.duration_UTC_to_str(obj.timezone)
 
         def get_device_groups_count(self, obj):
             queryset = Device2DeviceGroup.objects.filter(device_id=obj.id)
@@ -385,4 +425,5 @@ class DeviceSerializers:
                 'config',
                 'device_groups_count',
                 'organizations_count',
+                'timezone',
             ]

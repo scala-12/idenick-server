@@ -3,11 +3,13 @@ import io
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Optional
 
 import xlsxwriter
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import FileResponse
 
+from idenick_app.classes.utils import date_utils
 from idenick_app.models import (Department, Device, Device2DeviceGroup,
                                 Device2Organization, DeviceGroup2Organization,
                                 Employee, Employee2Department,
@@ -178,18 +180,28 @@ def get_report_file(request) -> FileResponse:
                 employee = line.employee
         except ObjectDoesNotExist:
             pass
-        device = None
+        device: Optional[Device] = None
         try:
             if line.device is not None:
                 device = line.device
         except ObjectDoesNotExist:
             pass
 
+        moment = line.moment
+        moment_utc = ''
+        if device is not None:
+            moment = moment + device.timezone
+            moment_utc = ' (' + \
+                'UTC' + (' ' if device.timezone.total_seconds == 0 else '') + \
+                date_utils.duration_UTC_to_str(device.timezone) + ')'
+
+        moment_str = moment.strftime('%Y-%m-%d %H:%M:%S') + moment_utc
+
         fields = [
             not_founded if employee is None else employee.get_full_name(),
             not_founded if device is None else device.name,
             not_founded if device is None else device.mqtt,
-            line.moment.strftime('%Y-%m-%d %H:%M:%S'),
+            moment_str,
             not_founded if line.request_type is None else line.get_request_type_display(),
             not_founded if line.response_type is None else line.get_response_type_display(),
             line.description,
@@ -217,7 +229,7 @@ def get_report_file(request) -> FileResponse:
             'device__name', 'Устройство')},
         {'name': 'ИД устройства', 'length': get_max_field_lenght_list(
             'device__mqtt', 'ИД устройства')},
-        {'name': 'Дата', 'length': 23},
+        {'name': 'Дата', 'length': 36},
         {'name': 'Запрос', 'length': get_max_field_lenght_list(
             'request_type', 'Запрос')},
         {'name': 'Ответ', 'length': get_max_field_lenght_list(
