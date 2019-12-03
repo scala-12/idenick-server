@@ -1,4 +1,5 @@
 """Serializers for models"""
+from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.http.request import QueryDict
@@ -25,10 +26,10 @@ class UserSerializer(serializers.ModelSerializer):
 
 class _TimezoneField(serializers.Field):
     def to_representation(self, value):
-        return date_utils.str_to_duration_UTC(value)
+        return value if isinstance(value, timedelta) else date_utils.str_to_duration_UTC(value)
 
     def to_internal_value(self, data):
-        return date_utils.str_to_duration_UTC(data)
+        return data if isinstance(data, timedelta) else date_utils.str_to_duration_UTC(data)
 
 
 class OrganizationSerializers:
@@ -278,7 +279,7 @@ class EmployeeRequestSerializer(serializers.ModelSerializer):
 
     def get_related_moment(self, obj: EmployeeRequest):
         result = obj.moment
-        if obj.device is not None:
+        if (obj.device is not None) and (obj.device.timezone is not None):
             result = result + obj.device.timezone
 
         return result
