@@ -1,5 +1,8 @@
 """views"""
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from enum import Enum
+from typing import Optional
 
 from django.contrib.auth.models import User
 from django.db.models.expressions import Value
@@ -11,11 +14,11 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from idenick_app.models import (Department, Device, Device2DeviceGroup,
-                                Device2Organization, DeviceGroup,
-                                DeviceGroup2Organization, Employee,
-                                Employee2Department, Employee2Organization,
-                                Login, Organization)
+from idenick_app.models import (AbstractEntry, Department, Device,
+                                Device2DeviceGroup, Device2Organization,
+                                DeviceGroup, DeviceGroup2Organization,
+                                Employee, Employee2Department,
+                                Employee2Organization, Login, Organization)
 from idenick_rest_api_v0.classes.utils import (login_utils, relation_utils,
                                                report_utils, request_utils,
                                                utils)
@@ -38,8 +41,27 @@ class _ErrorMessage(Enum):
 class _AbstractViewSet(viewsets.ViewSet):
     _serializer_classes = None
 
-    def _get_queryset(self, request, base_filter=False):
+    def _get_queryset(self, request, base_filter=False, with_dropped=False):
         pass
+
+    def _delete_or_restore(self, request, entity):
+        info = _DeleteRestoreStatusChecker(
+            entity=entity, delete_mode=('delete' in request.data))
+        if (info.status is _DeleteRestoreCheckStatus.DELETABLE) \
+                or (info.status is _DeleteRestoreCheckStatus.RESTORABLE):
+            info.entity.save()
+            result = self._response4update_n_create(data=info.entity)
+        elif info.status is _DeleteRestoreCheckStatus.ALREADY_DELETED:
+            result = self._response4update_n_create(
+                message="Удаленная ранее запись")
+        elif info.status is _DeleteRestoreCheckStatus.ALREADY_RESTORED:
+            result = self._response4update_n_create(
+                message="Восстановленная ранее запись")
+        elif info.status is _DeleteRestoreCheckStatus.EXPIRED_TIME:
+            result = self._response4update_n_create(
+                message="Доступное время для восстановления истекло")
+
+        return result
 
     def _response4update_n_create(self, code=status.HTTP_200_OK, data=None, message=None):
         result = None
@@ -90,7 +112,7 @@ class _AbstractViewSet(viewsets.ViewSet):
         return request_utils.response(self._retrieve_data(request, pk, queryset))
 
     def _retrieve_data(self, request, pk, queryset=None):
-        _queryset = self._get_queryset(request) if (
+        _queryset = self._get_queryset(request, with_dropped=('withDeleted' in request.GET)) if (
             queryset is None) else queryset
         entity = get_object_or_404(_queryset, pk=pk)
 
@@ -160,6 +182,40 @@ class _AbstractViewSet(viewsets.ViewSet):
         return {'update': update, 'serializer': serializer}
 
 
+class _DeleteRestoreCheckStatus(Enum):
+    """result of  delete/restore entity"""
+    DELETABLE = 'DELETABLE'
+    ALREADY_DELETED = 'ALREADY_DELETED'
+    RESTORABLE = 'RESTORABLE'
+    ALREADY_RESTORED = 'ALREADY_RESTORED'
+    EXPIRED_TIME = 'EXPIRED_TIME'
+
+
+@dataclass
+class _DeleteRestoreStatusChecker:
+    """info about delete/restore entity"""
+
+    def __init__(self, entity: AbstractEntry, delete_mode: Optional[bool] = True):
+        status = None
+        if delete_mode:
+            if entity.dropped_at is None:
+                entity.dropped_at = datetime.now()
+                status = _DeleteRestoreCheckStatus.DELETABLE
+            else:
+                status = _DeleteRestoreCheckStatus.ALREADY_DELETED
+        elif entity.dropped_at is not None:
+            if (datetime.now() - entity.dropped_at.replace(tzinfo=None)) < timedelta(minutes=5):
+                entity.dropped_at = None
+                status = _DeleteRestoreCheckStatus.RESTORABLE
+            else:
+                status = _DeleteRestoreCheckStatus.EXPIRED_TIME
+        else:
+            status = _DeleteRestoreCheckStatus.ALREADY_RESTORED
+
+        self.status = status
+        self.entity = entity
+
+
 class OrganizationViewSet(_AbstractViewSet):
     _serializer_classes = {
         'list': OrganizationSerializers.ModelSerializer,
@@ -168,8 +224,10 @@ class OrganizationViewSet(_AbstractViewSet):
         'partial_update': OrganizationSerializers.CreateSerializer,
     }
 
-    def _get_queryset(self, request, base_filter=False):
-        queryset = Organization.objects.filter(dropped_at=None)
+    def _get_queryset(self, request, base_filter=False, with_dropped=False):
+        queryset = Organization.objects.all()
+        if not with_dropped:
+            queryset = queryset.filter(dropped_at=None)
 
         if not base_filter:
             name_filter = request_utils.get_request_param(request, 'name')
@@ -228,25 +286,35 @@ class OrganizationViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator(Login.ADMIN)
     def partial_update(self, request, pk=None):
-        organization = get_object_or_404(Organization.objects.all(), pk=pk)
+        login = login_utils.get_login(request.user)
+        delete_restore_mode = (login.role == Login.ADMIN) \
+            and (('delete' in request.data) or ('restore' in request.data))
 
-        serializer_class = self.get_serializer_class()
+        entity: Organization = get_object_or_404(self._get_queryset(request,
+                                                                    with_dropped=delete_restore_mode),
+                                                 pk=pk)
+
         result = None
-
-        valid_result = self._validate_on_update(
-            pk, serializer_class, Organization, request.data)
-        serializer = valid_result.get('serializer')
-        update = valid_result.get('update')
-        if update is not None:
-            organization.name = update.name
-            organization.address = update.address
-            organization.phone = update.phone
-            organization.timezone = update.timezone
-            organization.save()
-            result = self._response4update_n_create(data=organization)
+        if delete_restore_mode:
+            result = self._delete_or_restore(request, entity)
         else:
-            result = self._response4update_n_create(
-                message=self._get_validation_error_msg(serializer.errors, Organization))
+            serializer_class = self.get_serializer_class()
+            result = None
+
+            valid_result = self._validate_on_update(
+                pk, serializer_class, Organization, request.data)
+            serializer = valid_result.get('serializer')
+            update = valid_result.get('update')
+            if update is not None:
+                entity.name = update.name
+                entity.address = update.address
+                entity.phone = update.phone
+                entity.timezone = update.timezone
+                entity.save()
+                result = self._response4update_n_create(data=entity)
+            else:
+                result = self._response4update_n_create(
+                    message=self._get_validation_error_msg(serializer.errors, Organization))
 
         return result
 
@@ -265,9 +333,12 @@ class DepartmentViewSet(_AbstractViewSet):
         'partial_update': DepartmentSerializers.CreateSerializer,
     }
 
-    def _get_queryset(self, request, base_filter=False):
+    def _get_queryset(self, request, base_filter=False, with_dropped=False):
         login = login_utils.get_login(request.user)
-        queryset = Department.objects.filter(dropped_at=None)
+        queryset = Department.objects.all()
+        if not with_dropped:
+            queryset = queryset.filter(dropped_at=None)
+
         role = login.role
         if (role == Login.CONTROLLER) or (role == Login.REGISTRATOR):
             queryset = queryset.filter(
@@ -338,31 +409,40 @@ class DepartmentViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator(Login.REGISTRATOR)
     def partial_update(self, request, pk=None):
-        department = get_object_or_404(self._get_queryset(request), pk=pk)
+        login = login_utils.get_login(request.user)
+        delete_restore_mode = (login.role == Login.ADMIN) \
+            and (('delete' in request.data) or ('restore' in request.data))
 
-        serializer_class = self.get_serializer_class()
+        entity: Department = get_object_or_404(
+            self._get_queryset(request, with_dropped=delete_restore_mode), pk=pk)
+
         result = None
-
-        department_data = QueryDict('', mutable=True)
-        department_data.update(request.data)
-        organization_id = {'organization': Login.objects.get(
-            user=request.user).organization_id}
-        department_data.update(organization_id)
-
-        valid_result = self._validate_on_update(
-            pk, serializer_class, Department, department_data, organization_id)
-        serializer = valid_result.get('serializer')
-        update = valid_result.get('update')
-        if update is not None:
-            department.name = update.name
-            department.rights = update.rights
-            department.address = update.address
-            department.description = update.description
-            department.save()
-            result = self._response4update_n_create(data=department)
+        if delete_restore_mode:
+            result = self._delete_or_restore(request, entity)
         else:
-            result = self._response4update_n_create(
-                message=self._get_validation_error_msg(serializer.errors, Department))
+            serializer_class = self.get_serializer_class()
+            result = None
+
+            department_data = QueryDict('', mutable=True)
+            department_data.update(request.data)
+            organization_id = {'organization': Login.objects.get(
+                user=request.user).organization_id}
+            department_data.update(organization_id)
+
+            valid_result = self._validate_on_update(
+                pk, serializer_class, Department, department_data, organization_id)
+            serializer = valid_result.get('serializer')
+            update = valid_result.get('update')
+            if update is not None:
+                entity.name = update.name
+                entity.rights = update.rights
+                entity.address = update.address
+                entity.description = update.description
+                entity.save()
+                result = self._response4update_n_create(data=entity)
+            else:
+                result = self._response4update_n_create(
+                    message=self._get_validation_error_msg(serializer.errors, Department))
 
         return result
 
@@ -383,8 +463,10 @@ class EmployeeViewSet(_AbstractViewSet):
         'partial_update': EmployeeSerializers.CreateSerializer,
     }
 
-    def _get_queryset(self, request, base_filter=False):
-        queryset = Employee.objects.filter(dropped_at=None)
+    def _get_queryset(self, request, base_filter=False, with_dropped=False):
+        queryset = Employee.objects.all()
+        if not with_dropped:
+            queryset = queryset.filter(dropped_at=None)
 
         login = login_utils.get_login(request.user)
         if not base_filter:
@@ -430,8 +512,7 @@ class EmployeeViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator()
     def retrieve(self, request, pk):
-        result = self._retrieve_data(
-            request, pk, self._get_queryset(request))
+        result = self._retrieve_data(request, pk)
 
         login = login_utils.get_login(request.user)
         if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
@@ -450,23 +531,31 @@ class EmployeeViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def partial_update(self, request, pk=None):
-        queryset = self._get_queryset(request)
-        employee = get_object_or_404(queryset, pk=pk)
-
-        serializer_class = self.get_serializer_class()
-        serializer = serializer_class(data=request.data)
-        result = None
         login = login_utils.get_login(request.user)
-        if serializer.is_valid():
-            data = serializer.data
-            employee.last_name = data.get('last_name', employee.last_name)
-            employee.first_name = data.get(
-                'first_name', employee.first_name)
-            employee.patronymic = data.get(
-                'patronymic', employee.patronymic)
-            employee.save()
+        delete_restore_mode = (login.role == Login.ADMIN) \
+            and (('delete' in request.data) or ('restore' in request.data))
 
-            result = self._response4update_n_create(data=employee)
+        entity: Employee = get_object_or_404(
+            self._get_queryset(request, with_dropped=delete_restore_mode), pk=pk)
+
+        result = None
+        if delete_restore_mode:
+            result = self._delete_or_restore(request, entity)
+        else:
+            serializer_class = self.get_serializer_class()
+            serializer = serializer_class(data=request.data)
+            result = None
+            login = login_utils.get_login(request.user)
+            if serializer.is_valid():
+                data = serializer.data
+                entity.last_name = data.get('last_name', entity.last_name)
+                entity.first_name = data.get(
+                    'first_name', entity.first_name)
+                entity.patronymic = data.get(
+                    'patronymic', entity.patronymic)
+                entity.save()
+
+                result = self._response4update_n_create(data=entity)
 
         return result
 
@@ -513,9 +602,11 @@ class _UserViewSet(_AbstractViewSet):
         return Login.REGISTRATOR if (login_utils.get_login(request.user).role == Login.ADMIN) \
             else Login.CONTROLLER
 
-    def _get_queryset(self, request, base_filter=False):
+    def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Login.objects.filter(
             role=self._user_role(request))
+        if not with_dropped:
+            queryset = queryset.filter(dropped_at=None)
 
         if not base_filter:
             name_filter = request_utils.get_request_param(request, 'name')
@@ -664,10 +755,13 @@ class DeviceViewSet(_AbstractViewSet):
         'partial_update': DeviceSerializers.UpdateSerializer,
     }
 
-    def _get_queryset(self, request, base_filter=False):
+    def _get_queryset(self, request, base_filter=False, with_dropped=False):
         login = login_utils.get_login(request.user)
 
-        queryset = Device.objects.filter(dropped_at=None)
+        queryset = Device.objects.all()
+        if not with_dropped:
+            queryset = queryset.filter(dropped_at=None)
+
         if login.role != Login.ADMIN:
             queryset = queryset.filter(id__in=Device2Organization.objects.filter(
                 organization_id=login.organization_id).values_list('device_id', flat=True))
@@ -753,37 +847,46 @@ class DeviceViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def partial_update(self, request, pk=None):
-        device = get_object_or_404(self._get_queryset(request), pk=pk)
+        login = login_utils.get_login(request.user)
+        delete_restore_mode = (login.role == Login.ADMIN) \
+            and (('delete' in request.data) or ('restore' in request.data))
 
-        serializer_class = self.get_serializer_class()
+        entity: Device = get_object_or_404(self._get_queryset(request,
+                                                              with_dropped=delete_restore_mode),
+                                           pk=pk)
+        entity.device_type = 0 if entity.device_type is None else entity.device_type
+
         result = None
-
-        device_data = QueryDict('', mutable=True)
-        device_data.update(request.data)
-        device_data.update({'mqtt': device.mqtt})
-        device.device_type = 0 if device.device_type is None else device.device_type
-        device_data.update({'device_type': device.device_type})
-
-        valid_result = self._validate_on_update(
-            pk, serializer_class, Device, device_data)
-        serializer = valid_result.get('serializer')
-        update = valid_result.get('update')
-        if update is not None:
-            device.name = update.name
-            device.description = update.description
-            device.config = update.config
-            device.timezone = update.timezone
-            device.save()
-            result = self._response4update_n_create(data=device)
+        if delete_restore_mode:
+            result = self._delete_or_restore(request, entity)
         else:
-            result = self._response4update_n_create(
-                message=self._get_validation_error_msg(serializer.errors, Device))
+            serializer_class = self.get_serializer_class()
+
+            device_data = QueryDict('', mutable=True)
+            device_data.update(request.data)
+            device_data.update({'mqtt': entity.mqtt})
+            device_data.update({'device_type': entity.device_type})
+
+            valid_result = self._validate_on_update(
+                pk, serializer_class, Device, device_data)
+            serializer = valid_result.get('serializer')
+            update = valid_result.get('update')
+            if update is not None:
+                entity.name = update.name
+                entity.description = update.description
+                entity.config = update.config
+                entity.timezone = update.timezone
+                entity.save()
+                result = self._response4update_n_create(data=entity)
+            else:
+                result = self._response4update_n_create(
+                    message=self._get_validation_error_msg(serializer.errors, Device))
 
         return result
 
     def _alternative_valid(self, pk, data, errors, extra):
-        return (len(errors.keys()) == 1) and errors.keys().__contains__('mqtt') \
-            and (errors.get('mqtt')[0].code == 'unique') \
+        return (len(errors.keys()) == 1) and errors.keys().__contains__('mqtt')\
+            and (errors.get('mqtt')[0].code == 'unique')\
             and not Device.objects.filter(mqtt=data.get('mqtt')).filter(~Q(id=pk)).exists()
 
 
@@ -795,8 +898,10 @@ class DeviceGroupViewSet(_AbstractViewSet):
         'partial_update': DeviceGroupSerializers.CreateSerializer,
     }
 
-    def _get_queryset(self, request, base_filter=False):
-        queryset = DeviceGroup.objects.filter(dropped_at=None)
+    def _get_queryset(self, request, base_filter=False, with_dropped=False):
+        queryset = DeviceGroup.objects.all()
+        if not with_dropped:
+            queryset = queryset.filter(dropped_at=None)
 
         login = login_utils.get_login(request.user)
 
@@ -880,24 +985,33 @@ class DeviceGroupViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def partial_update(self, request, pk=None):
-        group = get_object_or_404(self._get_queryset(request), pk=pk)
+        login = login_utils.get_login(request.user)
+        delete_restore_mode = (login.role == Login.ADMIN) \
+            and (('delete' in request.data) or ('restore' in request.data))
 
-        serializer_class = self.get_serializer_class()
+        entity: DeviceGroup = get_object_or_404(
+            self._get_queryset(request, with_dropped=delete_restore_mode), pk=pk)
+
         result = None
-
-        valid_result = self._validate_on_update(
-            pk, serializer_class, DeviceGroup, request.data)
-        serializer = valid_result.get('serializer')
-        update = valid_result.get('update')
-        if update is not None:
-            group.name = update.name
-            group.description = update.description
-            group.rights = update.rights
-            group.save()
-            result = self._response4update_n_create(data=group)
+        if delete_restore_mode:
+            result = self._delete_or_restore(request, entity)
         else:
-            result = self._response4update_n_create(
-                message=self._get_validation_error_msg(serializer.errors, DeviceGroup))
+            serializer_class = self.get_serializer_class()
+            result = None
+
+            valid_result = self._validate_on_update(
+                pk, serializer_class, DeviceGroup, request.data)
+            serializer = valid_result.get('serializer')
+            update = valid_result.get('update')
+            if update is not None:
+                entity.name = update.name
+                entity.description = update.description
+                entity.rights = update.rights
+                entity.save()
+                result = self._response4update_n_create(data=entity)
+            else:
+                result = self._response4update_n_create(
+                    message=self._get_validation_error_msg(serializer.errors, DeviceGroup))
 
         return result
 
