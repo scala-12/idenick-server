@@ -8,39 +8,45 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 
-class _AbstractEntry(models.Model):
+class AbstractSimpleEntry(models.Model):
     id = models.AutoField(primary_key=True)
-    created_at = models.DateTimeField(db_column='rcreated', auto_now_add=True)
     dropped_at = models.DateTimeField(
         db_column='rdropped', null=True, blank=True)
 
     def save(self, *args, **kwargs):
         if not self.dropped_at:
             self.dropped_at = None
-        super(_AbstractEntry, self).save(*args, **kwargs)
+        super(AbstractSimpleEntry, self).save(*args, **kwargs)
 
     class Meta:
         abstract = True
-        ordering = ["created_at"]
 
     def _str(self):
         return 'id[%s] ' % (self.id)
 
 
-class _AbstractTimezonedEntry(_AbstractEntry):
+class AbstractEntry(AbstractSimpleEntry):
+    created_at = models.DateTimeField(db_column='rcreated', auto_now_add=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["created_at"]
+
+
+class AbstractTimezonedEntry(AbstractEntry):
     timezone = models.DurationField(default=None, null=True, blank=True,)
 
     def save(self, *args, **kwargs):
         if (not self.timezone) or (self.timezone > datetime.timedelta(hours=14)) \
                 or (self.timezone < datetime.timedelta(hours=-12)):
             self.timezone = None
-        super(_AbstractTimezonedEntry, self).save(*args, **kwargs)
+        super(AbstractTimezonedEntry, self).save(*args, **kwargs)
 
     class Meta:
         abstract = True
 
 
-class Employee(_AbstractEntry):
+class Employee(AbstractEntry):
     """Employee model"""
     guid = models.CharField(max_length=50, unique=True,
                             db_column='userid', default=uuid.uuid4)
@@ -59,7 +65,7 @@ class Employee(_AbstractEntry):
         db_table = 'users'
 
 
-class Organization(_AbstractTimezonedEntry):
+class Organization(AbstractTimezonedEntry):
     """Organization model"""
     guid = models.CharField(max_length=50, unique=True, db_column='companyid',
                             default=uuid.uuid4, editable=False)
@@ -77,7 +83,7 @@ class Organization(_AbstractTimezonedEntry):
         verbose_name = 'Организация'
 
 
-class Department(_AbstractEntry):
+class Department(AbstractEntry):
     """Department model"""
     organization = models.ForeignKey(
         'Organization', db_column='companyid', related_name='departments', on_delete=models.CASCADE)
@@ -95,7 +101,7 @@ class Department(_AbstractEntry):
         unique_together = (('organization', 'name'),)
 
 
-class Employee2Department(_AbstractEntry):
+class Employee2Department(AbstractEntry):
     """Model of relation between employee and department"""
     department = models.ForeignKey(
         'Department', db_column='usergroupid', related_name='employees', on_delete=models.CASCADE)
@@ -110,7 +116,7 @@ class Employee2Department(_AbstractEntry):
         unique_together = (('department', 'employee'),)
 
 
-class Login(models.Model):
+class Login(AbstractSimpleEntry):
     """Model of user info"""
     ADMIN = 'adm'
     CONTROLLER = 'ctrl'
@@ -123,12 +129,15 @@ class Login(models.Model):
         (NOT_SELECTED, 'not selected'),
     ]
 
-    id = models.AutoField(primary_key=True)
     guid = models.UUIDField(default=uuid.uuid4, editable=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     role = models.CharField(max_length=4, choices=USER_ROLE, blank=True)
     organization = models.ForeignKey(
         'Organization', on_delete=models.CASCADE, null=True, blank=True)
+
+    @property
+    def created_at(self):
+        return self.user.date_joined
 
     def save(self, *args, **kwargs):
         if not self.organization and not self.role:
@@ -162,7 +171,7 @@ def save_user_profile(sender, instance, **kwargs):
     instance.login.save()
 
 
-class Device(_AbstractTimezonedEntry):
+class Device(AbstractTimezonedEntry):
     """Device model"""
     mqtt = models.CharField(max_length=255, db_column='mqttid', unique=True,)
     name = models.CharField(max_length=64, verbose_name='название')
@@ -182,7 +191,7 @@ class Device(_AbstractTimezonedEntry):
         db_table = 'devices'
 
 
-class DeviceGroup(_AbstractEntry):
+class DeviceGroup(AbstractEntry):
     """Device group model"""
     name = models.CharField(max_length=64, unique=True,
                             verbose_name='название проходной', )
@@ -199,7 +208,7 @@ class DeviceGroup(_AbstractEntry):
         verbose_name = 'Проходная'
 
 
-class DeviceGroup2Organization(_AbstractEntry):
+class DeviceGroup2Organization(AbstractEntry):
     """Model of relation between device group and organization"""
     device_group = models.ForeignKey(
         'DeviceGroup', db_column='devicegroupsid', related_name='organizations', on_delete=models.CASCADE)
@@ -213,7 +222,7 @@ class DeviceGroup2Organization(_AbstractEntry):
         unique_together = (('device_group', 'organization'),)
 
 
-class Employee2Organization(_AbstractEntry):
+class Employee2Organization(AbstractEntry):
     """Model of relation between employee and organization"""
     employee = models.ForeignKey(
         'Employee', db_column='usersid', related_name='organizations', on_delete=models.CASCADE)
@@ -227,7 +236,7 @@ class Employee2Organization(_AbstractEntry):
         unique_together = (('employee', 'organization'),)
 
 
-class Device2DeviceGroup(_AbstractEntry):
+class Device2DeviceGroup(AbstractEntry):
     """Model of relation between device and device group"""
     device_group = models.ForeignKey(
         'DeviceGroup', db_column='devicegroupid', related_name='devices', on_delete=models.CASCADE)
@@ -242,7 +251,7 @@ class Device2DeviceGroup(_AbstractEntry):
         db_table = 'devices_devicegroup'
 
 
-class Device2Organization(_AbstractEntry):
+class Device2Organization(AbstractEntry):
     """Model of relation between device and device group"""
     organization = models.ForeignKey(
         'Organization', db_column='companysid', related_name='devices', on_delete=models.CASCADE)

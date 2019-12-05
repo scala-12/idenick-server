@@ -248,13 +248,14 @@ class LoginSerializer():
         last_name = serializers.ReadOnlyField(source='user.last_name')
         is_active = serializers.ReadOnlyField(source='user.is_active')
         role = serializers.ReadOnlyField(source='get_role_display')
-        date_joined = serializers.ReadOnlyField(source='user.date_joined')
+        created_at = serializers.ReadOnlyField(source='user.date_joined')
 
         class Meta:
             model = Login
             fields = [
                 'id',
-                'date_joined',
+                'created_at',
+                'dropped_at',
                 'organization',
                 'role',
                 'username',
