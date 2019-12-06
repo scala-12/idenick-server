@@ -1,11 +1,16 @@
 """models"""
 import datetime
 import uuid
+from typing import Optional
 
 from django.contrib.auth.models import User
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+
+from idenick_app.classes.utils import date_utils
+
+DELETED_STATUS = 'удален'
 
 
 class AbstractSimpleEntry(models.Model):
@@ -55,9 +60,10 @@ class Employee(AbstractEntry):
     patronymic = models.CharField(max_length=64)
 
     def __str__(self):
-        return self._str() + self.get_full_name()
+        return self._str() + self.full_name
 
-    def get_full_name(self):
+    @property
+    def full_name(self):
         """return full employee name"""
         return '%s %s %s' % (self.last_name, self.first_name, self.patronymic)
 
@@ -189,6 +195,11 @@ class Device(AbstractTimezonedEntry):
 
     class Meta:
         db_table = 'devices'
+
+    @property
+    def full_name(self):
+        """return full device name"""
+        return '%s (%s)' % (self.name, self.mqtt)
 
 
 class DeviceGroup(AbstractEntry):
@@ -368,6 +379,47 @@ class EmployeeRequest(models.Model):
     device = models.ForeignKey(
         'Device', db_column='devicesid', on_delete=models.CASCADE, null=True)
     templatesid = models.IntegerField(null=True)
+
+    @property
+    def employee_name(self):
+        result = None
+        if not (self.employee is None):
+            if self.employee.dropped_at is None:
+                result = self.employee.full_name
+            else:
+                result = DELETED_STATUS
+
+        return result
+
+    def get_date_info(self) -> date_utils.DateInfo:
+        utc = None
+        if (self.device is not None) and (self.device.timezone is not None):
+            utc = date_utils.duration_UTC_to_str(self.device.timezone)
+
+        return date_utils.DateInfo(self.related_moment, utc)
+
+    @property
+    def date_info(self) -> dict:
+        return vars(self.get_date_info())
+
+    @property
+    def device_name(self) -> Optional[str]:
+        result = None
+        if not (self.device is None):
+            if self.device.dropped_at is None:
+                result = self.device.full_name
+            else:
+                result = DELETED_STATUS
+
+        return result
+
+    @property
+    def related_moment(self) -> Optional[datetime.datetime]:
+        result = self.moment
+        if (self.device is not None) and (self.device.timezone is not None):
+            result = result + self.device.timezone
+
+        return result
 
     def __str__(self):
         return ('id[%s] [%s] with [%s] in [%s] do [%s] with result [%s] (%s)'

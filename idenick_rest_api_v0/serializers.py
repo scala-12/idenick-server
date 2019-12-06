@@ -32,6 +32,19 @@ class _TimezoneField(serializers.Field):
         return data if isinstance(data, timedelta) else date_utils.str_to_duration_UTC(data)
 
 
+class _DateInfoSerializer(serializers.ModelSerializer):
+    """Serializer for date info container"""
+    class Meta:
+        model = date_utils.DateInfo
+        fields = [
+            'week_day',
+            'day',
+            'month',
+            'time',
+            'utc',
+        ]
+
+
 class OrganizationSerializers:
     """Serializers for organization-model"""
     class CreateSerializer(serializers.ModelSerializer):
@@ -275,15 +288,7 @@ class EmployeeRequestSerializer(serializers.ModelSerializer):
         source='get_response_type_display')
     algorithm_type = serializers.ReadOnlyField(
         source='get_algorithm_type_display')
-
-    related_moment = serializers.SerializerMethodField()
-
-    def get_related_moment(self, obj: EmployeeRequest):
-        result = obj.moment
-        if (obj.device is not None) and (obj.device.timezone is not None):
-            result = result + obj.device.timezone
-
-        return result
+    date_info = serializers.DictField(child=serializers.CharField())
 
     class Meta:
         model = EmployeeRequest
@@ -292,11 +297,11 @@ class EmployeeRequestSerializer(serializers.ModelSerializer):
             'employee',
             'device',
             'moment',
-            'related_moment',
             'request_type',
             'response_type',
             'description',
             'algorithm_type',
+            'date_info',
         ]
 
 

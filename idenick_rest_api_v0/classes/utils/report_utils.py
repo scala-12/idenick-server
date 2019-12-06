@@ -198,7 +198,7 @@ def get_report_file(request) -> FileResponse:
         moment_str = moment.strftime('%Y-%m-%d %H:%M:%S') + moment_utc
 
         fields = [
-            not_founded if employee is None else employee.get_full_name(),
+            not_founded if employee is None else employee.full_name,
             not_founded if device is None else device.name,
             not_founded if device is None else device.mqtt,
             moment_str,
@@ -218,7 +218,7 @@ def get_report_file(request) -> FileResponse:
                        + [0 if caption is None else len(caption)])
 
     max_employee_name_lenght = 4 + max(list(
-        map(lambda e: len(e.get_full_name()),
+        map(lambda e: len(e.full_name),
             Employee.objects.filter(id__in=set(
                 queryset.values_list('employee', flat=True)))
             )) + [len('Сотрудник')])
