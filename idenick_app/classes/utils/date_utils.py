@@ -1,6 +1,7 @@
 """date utils"""
 import re
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Optional
 
 
@@ -30,6 +31,24 @@ def str_to_duration_UTC(value: str) -> Optional[timedelta]:
 
     return result
 
+
+@dataclass
+class DateInfo:
+    """Date info container"""
+
+    def __init__(self, date: datetime, utc: Optional[str] = None):
+        self.utc = None if utc is None else ('UTC' + utc)
+        self.date = date
+
+        time = date.strftime('%H:%M')
+        day = date.strftime('%d.%m.%Y')
+        week_day = date.strftime('%a')
+        month = date.strftime('%B')
+
+        self.week_day = week_day
+        self.day = day
+        self.month = month
+        self.time = time
 
 UTC = [
     '+14:00',
