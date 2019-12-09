@@ -44,13 +44,15 @@ class _AbstractViewSet(viewsets.ViewSet):
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         pass
 
-    def _delete_or_restore(self, request, entity):
+    def _delete_or_restore(self, request, entity: AbstractEntry,
+                           return_entity: Optional[AbstractEntry] = None):
         info = _DeleteRestoreStatusChecker(
             entity=entity, delete_mode=('delete' in request.data))
         if (info.status is _DeleteRestoreCheckStatus.DELETABLE) \
                 or (info.status is _DeleteRestoreCheckStatus.RESTORABLE):
             info.entity.save()
-            result = self._response4update_n_create(data=info.entity)
+            result = self._response4update_n_create(
+                data=info.entity if return_entity is None else return_entity)
         elif info.status is _DeleteRestoreCheckStatus.ALREADY_DELETED:
             result = self._response4update_n_create(
                 message="Удаленная ранее запись")
@@ -239,21 +241,21 @@ class OrganizationViewSet(_AbstractViewSet):
         if device_group_filter is not None:
             organization_id_list = queryset.values_list('id', flat=True)
             queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
-                organization_id__in=organization_id_list).filter(
+                organization_id__in=organization_id_list).filter(dropped_at=None).filter(
                 device_group_id=device_group_filter).values_list('organization', flat=True))
         device_filter = request_utils.get_request_param(
             request, 'device', True, base_filter=base_filter)
         if device_filter is not None:
             organization_id_list = queryset.values_list('id', flat=True)
             queryset = queryset.filter(id__in=Device2Organization.objects.filter(
-                organization_id__in=organization_id_list).filter(
+                organization_id__in=organization_id_list).filter(dropped_at=None).filter(
                 device_id=device_filter).values_list('organization', flat=True))
         employee_filter = request_utils.get_request_param(
             request, 'employee', True, base_filter=base_filter)
         if employee_filter is not None:
             organization_id_list = queryset.values_list('id', flat=True)
             queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
-                organization_id__in=organization_id_list).filter(
+                organization_id__in=organization_id_list).filter(dropped_at=None).filter(
                 employee_id=employee_filter).values_list('organization', flat=True))
 
         return queryset
@@ -465,10 +467,20 @@ class EmployeeViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Employee.objects.all()
-        if not with_dropped:
-            queryset = queryset.filter(dropped_at=None)
 
         login = login_utils.get_login(request.user)
+
+        organization_filter = None
+        if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
+            organization_filter = {'id': login.organization_id}
+            if with_dropped:
+                organization_filter.update(with_dropped=True)
+        elif login.role == Login.ADMIN:
+            if not with_dropped:
+                queryset = queryset.filter(dropped_at=None)
+            organization_filter = {'id': request_utils.get_request_param(
+                request, 'organization', True, base_filter=base_filter), }
+
         if not base_filter:
             name_filter = request_utils.get_request_param(request, 'name')
             if name_filter is not None:
@@ -487,18 +499,18 @@ class EmployeeViewSet(_AbstractViewSet):
                 id__in=Employee2Department.objects.filter(
                     department_id=department_filter).values_list('employee', flat=True))
 
-        organization_filter = None
-        if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
-            organization_filter = login.organization_id
-        elif login.role == Login.ADMIN:
-            organization_filter = request_utils.get_request_param(
-                request, 'organization', True, base_filter=base_filter)
-
         if organization_filter is not None:
             employee_id_list = queryset.values_list('id', flat=True)
-            queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
-                organization_id=organization_filter).filter(
-                employee_id__in=employee_id_list).values_list('employee', flat=True))
+            filter_props = {
+                'organization_id': organization_filter.get('id'),
+                'employee_id__in': employee_id_list
+            }
+            if (not ('with_dropped' in organization_filter)) \
+                    or (not organization_filter.get('with_dropped')):
+                filter_props.update(dropped_at=None)
+
+            queryset = queryset.filter(id__in=Employee2Organization.objects.filter(**filter_props)
+                                       .values_list('employee', flat=True))
 
         return queryset
 
@@ -516,6 +528,14 @@ class EmployeeViewSet(_AbstractViewSet):
 
         login = login_utils.get_login(request.user)
         if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
+            entity = result.get('data')
+            if entity.get('dropped_at') is None:
+                dropped_at = Employee2Organization.objects.get(
+                    employee=pk, organization=login.organization).dropped_at
+                if not (dropped_at is None):
+                    entity.update(dropped_at=dropped_at.isoformat())
+                    result.update(data=entity)
+
             result.update({'departments_count': Employee2Department.objects.filter(
                 employee_id=pk).filter(department__organization_id=login.organization_id).count()})
             if 'full' in request.GET:
@@ -532,15 +552,26 @@ class EmployeeViewSet(_AbstractViewSet):
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def partial_update(self, request, pk=None):
         login = login_utils.get_login(request.user)
-        delete_restore_mode = (login.role == Login.ADMIN) \
-            and (('delete' in request.data) or ('restore' in request.data))
+        delete_restore_mode = ('delete' in request.data) or (
+            'restore' in request.data)
 
         entity: Employee = get_object_or_404(
             self._get_queryset(request, with_dropped=delete_restore_mode), pk=pk)
 
         result = None
         if delete_restore_mode:
-            result = self._delete_or_restore(request, entity)
+            if login.role == Login.ADMIN:
+                result = self._delete_or_restore(request, entity)
+            elif login.role == Login.REGISTRATOR:
+                relations = Employee2Organization.objects.filter(organization=login.organization,
+                                                                 employee=entity)
+                if relations.exists():
+                    delete_or_restore_result = self._delete_or_restore(
+                        request, entity=relations.first(), return_entity=entity)
+                    if delete_or_restore_result.data.get('success'):
+                        result = self._response4update_n_create(data=entity)
+                    else:
+                        result = delete_or_restore_result
         else:
             serializer_class = self.get_serializer_class()
             serializer = serializer_class(data=request.data)
@@ -756,17 +787,20 @@ class DeviceViewSet(_AbstractViewSet):
     }
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
-        login = login_utils.get_login(request.user)
-
         queryset = Device.objects.all()
-        if not with_dropped:
-            queryset = queryset.filter(dropped_at=None)
-
-        if login.role != Login.ADMIN:
-            queryset = queryset.filter(id__in=Device2Organization.objects.filter(
-                organization_id=login.organization_id).values_list('device_id', flat=True))
 
         login = login_utils.get_login(request.user)
+
+        organization_filter = None
+        if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
+            organization_filter = {'id': login.organization_id}
+            if with_dropped:
+                organization_filter.update(with_dropped=True)
+        elif login.role == Login.ADMIN:
+            if not with_dropped:
+                queryset = queryset.filter(dropped_at=None)
+            organization_filter = {'id': request_utils.get_request_param(
+                request, 'organization', True, base_filter=base_filter), }
 
         if not base_filter:
             name_filter = request_utils.get_request_param(request, 'name')
@@ -780,13 +814,19 @@ class DeviceViewSet(_AbstractViewSet):
                 .filter(id__in=relation_utils.get_relates(Device, 'device_id', Device2DeviceGroup,
                                                           'device_group_id', device_group_filter,
                                                           login).values_list('id', flat=True))
-        organization_filter = request_utils.get_request_param(
-            request, 'organization', True, base_filter=base_filter)
+
         if organization_filter is not None:
             device_id_list = queryset.values_list('id', flat=True)
-            queryset = queryset.filter(id__in=Device2Organization.objects.filter(
-                device_id__in=device_id_list).filter(
-                organization_id=organization_filter).values_list('device_id', flat=True))
+            filter_props = {
+                'organization_id': organization_filter.get('id'),
+                'device_id__in': device_id_list
+            }
+            if (not ('with_dropped' in organization_filter)) \
+                    or (not organization_filter.get('with_dropped')):
+                filter_props.update(dropped_at=None)
+
+            queryset = queryset.filter(id__in=Device2Organization.objects.filter(**filter_props)
+                                       .values_list('device_id', flat=True))
 
         return queryset
 
@@ -805,6 +845,14 @@ class DeviceViewSet(_AbstractViewSet):
         login = login_utils.get_login(request.user)
 
         if ('full' in request.GET) and ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
+            entity = result.get('data')
+            if entity.get('dropped_at') is None:
+                dropped_at = Device2Organization.objects.get(
+                    device=pk, organization=login.organization).dropped_at
+                if not (dropped_at is None):
+                    entity.update(dropped_at=dropped_at.isoformat())
+                    result.update(data=entity)
+
             result.update({'organization': OrganizationSerializers.ModelSerializer(
                 Organization.objects.get(id=login.organization_id)).data})
 
@@ -848,8 +896,8 @@ class DeviceViewSet(_AbstractViewSet):
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def partial_update(self, request, pk=None):
         login = login_utils.get_login(request.user)
-        delete_restore_mode = (login.role == Login.ADMIN) \
-            and (('delete' in request.data) or ('restore' in request.data))
+        delete_restore_mode = ('delete' in request.data) or (
+            'restore' in request.data)
 
         entity: Device = get_object_or_404(self._get_queryset(request,
                                                               with_dropped=delete_restore_mode),
@@ -858,7 +906,18 @@ class DeviceViewSet(_AbstractViewSet):
 
         result = None
         if delete_restore_mode:
-            result = self._delete_or_restore(request, entity)
+            if login.role == Login.ADMIN:
+                result = self._delete_or_restore(request, entity)
+            elif login.role == Login.REGISTRATOR:
+                relations = Device2Organization.objects.filter(organization=login.organization,
+                                                               device=entity)
+                if relations.exists():
+                    delete_or_restore_result = self._delete_or_restore(
+                        request, entity=relations.first(), return_entity=entity)
+                    if delete_or_restore_result.data.get('success'):
+                        result = self._response4update_n_create(data=entity)
+                    else:
+                        result = delete_or_restore_result
         else:
             serializer_class = self.get_serializer_class()
 
