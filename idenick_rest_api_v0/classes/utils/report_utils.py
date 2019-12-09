@@ -3,7 +3,7 @@ import io
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 import xlsxwriter
 from django.core.exceptions import ObjectDoesNotExist
@@ -18,7 +18,7 @@ from idenick_app.models import (Department, Device, Device2DeviceGroup,
 from idenick_rest_api_v0.classes.utils import login_utils, request_utils, utils
 from idenick_rest_api_v0.serializers import (DepartmentSerializers,
                                              DeviceSerializers,
-                                             EmployeeRequestSerializer,
+                                             EmployeeRequestSerializers,
                                              EmployeeSerializers,
                                              OrganizationSerializers)
 
@@ -72,7 +72,7 @@ def _get_report(request) -> _ReportQuerysetInfo:
 
             if (organization_filter is None) or Employee2Organization.objects \
                     .filter(employee_id=entity_id).filter(organization_id=organization_filter) \
-                .exists():
+            .exists():
                 report_queryset = report_queryset.filter(
                     employee_id=entity_id)
             else:
@@ -113,7 +113,7 @@ def _get_report(request) -> _ReportQuerysetInfo:
 
             if (organization_filter is None) \
                     or Device2Organization.objects.filter(device_id=entity_id)\
-                .filter(organization_id=organization_filter).exists():
+            .filter(organization_id=organization_filter).exists():
                 report_queryset = report_queryset.filter(
                     device_id=entity_id)
             else:
@@ -123,7 +123,7 @@ def _get_report(request) -> _ReportQuerysetInfo:
 
             if (organization_filter is None) \
                     or DeviceGroup2Organization.objects.filter(device_group_id=entity_id) \
-                .filter(organization_id=organization_filter).exists():
+            .filter(organization_id=organization_filter).exists():
                 devices = Device2DeviceGroup.objects.filter(
                     device_group_id=entity_id).values_list('device_id', flat=True)
 
@@ -162,104 +162,158 @@ def _get_report(request) -> _ReportQuerysetInfo:
                                name=name, count=report_queryset.count())
 
 
+class _HeaderName(Enum):
+    """set of headers for report file"""
+    DEVICE_GROUP = 'Проходная'
+    MONTH = 'Месяц'
+    DATE = 'Дата'
+    WEEK_DAY = 'д.н.'
+    EMPLOYEE_NAME = 'ФИО'
+    TIMESHEET_ID = 'Табельный №'
+    POSITION = 'Должность'
+    DEPARTMENT = 'Подразделение'
+    FACT_TIME_START = 'Приход'
+    FACT_TIME_END = 'Уход'
+    FACT_TIME_SUM = 'Прод.'
+
+
+@dataclass
+class _SubHeaderInfo:
+    def __init__(self, caption: _HeaderName, size: Optional[int] = 8):
+        self.caption = caption
+        self.size = size
+
+
+@dataclass
+class _HeaderInfo:
+    def __init__(self, caption: str, sub: Optional[List[_SubHeaderInfo]] = None):
+        self.caption = caption
+        self.sub = sub
+
+
+class _ReportFileWriter:
+    """class for creation with report file"""
+    HEADERS = [
+        _HeaderInfo('Место и дата регистрации', [
+            _SubHeaderInfo(_HeaderName.DEVICE_GROUP),
+            _SubHeaderInfo(_HeaderName.MONTH),
+            _SubHeaderInfo(_HeaderName.DATE),
+            _SubHeaderInfo(_HeaderName.WEEK_DAY),
+        ]),
+        _HeaderInfo('Информация о сотруднике', [
+            _SubHeaderInfo(_HeaderName.EMPLOYEE_NAME),
+            _SubHeaderInfo(_HeaderName.TIMESHEET_ID),
+            _SubHeaderInfo(_HeaderName.POSITION),
+            _SubHeaderInfo(_HeaderName.DEPARTMENT),
+        ]),
+        _HeaderInfo('Факт', [
+            _SubHeaderInfo(_HeaderName.FACT_TIME_START),
+            _SubHeaderInfo(_HeaderName.FACT_TIME_END),
+            _SubHeaderInfo(_HeaderName.FACT_TIME_SUM),
+        ]),
+    ]
+    _NOT_FOUNDED = 'Не определен'
+    LAST_HEADER_ROW_INDEX = 1
+
+    def __init__(self):
+        self._row = _ReportFileWriter.LAST_HEADER_ROW_INDEX + 1
+
+        self._output_file = io.BytesIO()
+        self._workbook = xlsxwriter.Workbook(
+            self._output_file, {'in_memory': True})
+        self._worksheet = self._workbook.add_worksheet()
+        self._columns_map = {}
+        self._columns_size = {}
+
+        i = 0
+        for header in _ReportFileWriter.HEADERS:
+            self._worksheet.merge_range(
+                first_row=0, first_col=i, last_row=0, last_col=(i + len(header.sub) - 1), data=header.caption)
+            for sub in header.sub:
+                self._worksheet.write(1, i, sub.caption.value)
+                self._columns_map.update({sub.caption: i})
+                self._columns_size.update(
+                    {sub.caption: len(sub.caption.value)})
+                i += 1
+
+    def _get_column_index(self, column: _HeaderName):
+        return self._columns_map.get(column)
+
+    def _get_column_size(self, column: _HeaderName):
+        return self._columns_size.get(column)
+
+    def _write_cell(self, row: int, column: _HeaderName, value: str):
+        self._worksheet.write(
+            row, self._get_column_index(column), value)
+
+        if self._columns_size.get(column) < len(value):
+            self._columns_size.update({column: len(value)})
+
+    def write_lines(self, queryset):
+        for line in EmployeeRequestSerializers.HumanReadableSerializer(queryset, many=True).data:
+            if line.get('employee_name') is None:
+                line.update(employee_name=_ReportFileWriter._NOT_FOUNDED)
+            if line.get('device_name') is None:
+                line.update(device_name=_ReportFileWriter._NOT_FOUNDED)
+
+            # TODO: сделать связь прибор-проходная n:1
+            self._write_cell(self._row, _HeaderName.DEVICE_GROUP, '-')
+
+            date_info = line.get('date_info')
+            self._write_cell(self._row, _HeaderName.MONTH,
+                             date_info.get('month'))
+            self._write_cell(self._row, _HeaderName.DATE, date_info.get('day'))
+            self._write_cell(self._row, _HeaderName.WEEK_DAY,
+                             date_info.get('week_day'))
+
+            self._write_cell(self._row, _HeaderName.EMPLOYEE_NAME,
+                             line.get('employee_name'))
+            self._write_cell(self._row, _HeaderName.TIMESHEET_ID, 'нет в базе')
+            self._write_cell(self._row, _HeaderName.POSITION, 'нет в базе')
+            # TODO: после добавления галочки "отображать в отчетах" для подразделения
+            self._write_cell(self._row, _HeaderName.DEPARTMENT, '-')
+
+            self._write_cell(self._row, _HeaderName.FACT_TIME_START, '-')
+            self._write_cell(self._row, _HeaderName.FACT_TIME_END, '-')
+            self._write_cell(self._row, _HeaderName.FACT_TIME_SUM, '-')
+
+            self._row += 1
+
+    def close(self, name: str) -> FileResponse:
+        self._worksheet.write(
+            self._row, 0, 'Кол-во: %d' % (self._row -
+                                          1 - _ReportFileWriter.LAST_HEADER_ROW_INDEX))
+        for header in _ReportFileWriter.HEADERS:
+            for sub in header.sub:
+                index = self._get_column_index(sub.caption)
+                self._worksheet.set_column(
+                    index, index, self._get_column_size(sub.caption) + 4)
+
+        self._workbook.close()
+        self._output_file.seek(0)
+
+        file_name = 'Report ' + \
+            name + ' ' + \
+            datetime.now().strftime('%Y_%m_%d') + '.xlsx'
+
+        response = FileResponse(
+            streaming_content=self._output_file,
+            as_attachment=True,
+            filename=file_name,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+        response['Access-Control-Allow-Headers'] = 'Content-Type'
+
+        return response
+
+
 def get_report_file(request) -> FileResponse:
     """report file"""
     report_data = _get_report(request)
-    queryset = report_data.queryset
 
-    output_file = io.BytesIO()
-    workbook = xlsxwriter.Workbook(output_file, {'in_memory': True})
-    worksheet = workbook.add_worksheet()
-
-    not_founded = 'Не определен'
-    row = 1
-    for line in queryset:
-        employee = None
-        try:
-            if line.employee is not None:
-                employee = line.employee
-        except ObjectDoesNotExist:
-            pass
-        device: Optional[Device] = None
-        try:
-            if line.device is not None:
-                device = line.device
-        except ObjectDoesNotExist:
-            pass
-
-        moment = line.moment
-        moment_utc = ''
-        if device is not None:
-            moment = moment + device.timezone
-            moment_utc = ' (' + \
-                'UTC' + (' ' if device.timezone.total_seconds == 0 else '') + \
-                date_utils.duration_UTC_to_str(device.timezone) + ')'
-
-        moment_str = moment.strftime('%Y-%m-%d %H:%M:%S') + moment_utc
-
-        fields = [
-            not_founded if employee is None else employee.full_name,
-            not_founded if device is None else device.name,
-            not_founded if device is None else device.mqtt,
-            moment_str,
-            not_founded if line.request_type is None else line.get_request_type_display(),
-            not_founded if line.response_type is None else line.get_response_type_display(),
-            line.description,
-            not_founded if line.algorithm_type is None else line.get_algorithm_type_display(),
-        ]
-        col = 0
-        for field in fields:
-            worksheet.write(row, col, field)
-            col += 1
-        row += 1
-
-    def get_max_field_lenght_list(field, caption=None):
-        return 4 + max(list(len(str(s)) for s in set(queryset.values_list(field, flat=True)))
-                       + [0 if caption is None else len(caption)])
-
-    max_employee_name_lenght = 4 + max(list(
-        map(lambda e: len(e.full_name),
-            Employee.objects.filter(id__in=set(
-                queryset.values_list('employee', flat=True)))
-            )) + [len('Сотрудник')])
-
-    fields = [
-        {'name': 'Сотрудник', 'length': max_employee_name_lenght},
-        {'name': 'Устройство', 'length': get_max_field_lenght_list(
-            'device__name', 'Устройство')},
-        {'name': 'ИД устройства', 'length': get_max_field_lenght_list(
-            'device__mqtt', 'ИД устройства')},
-        {'name': 'Дата', 'length': 36},
-        {'name': 'Запрос', 'length': get_max_field_lenght_list(
-            'request_type', 'Запрос')},
-        {'name': 'Ответ', 'length': get_max_field_lenght_list(
-            'response_type', 'Ответ')},
-        {'name': 'Описание', 'length': get_max_field_lenght_list(
-            'description', 'Описание')},
-        {'name': 'Алгоритм', 'length': get_max_field_lenght_list(
-            'algorithm_type', 'Алгоритм')},
-    ]
-    i = 0
-    for field in fields:
-        worksheet.write(0, i, field.get('name'))
-        worksheet.set_column(i, i, field.get('length'))
-        i += 1
-
-    workbook.close()
-
-    output_file.seek(0)
-
-    file_name = 'Report ' + \
-        report_data.name + ' ' + \
-        datetime.now().strftime('%Y_%m_%d') + '.xlsx'
-
-    response = FileResponse(
-        streaming_content=output_file,
-        as_attachment=True,
-        filename=file_name,
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-    response['Access-Control-Allow-Headers'] = 'Content-Type'
+    writer = _ReportFileWriter()
+    writer.write_lines(report_data.queryset)
+    response = writer.close(report_data.name)
 
     return response
 
@@ -267,7 +321,8 @@ def get_report_file(request) -> FileResponse:
 @dataclass
 class ReportInfo:
     def __init__(self, queryset, count, extra):
-        self.data = EmployeeRequestSerializer(queryset, many=True).data
+        self.data = EmployeeRequestSerializers.ModelSerializer(
+            queryset, many=True).data
         self.count = count
         self.extra = extra
 
