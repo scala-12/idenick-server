@@ -27,13 +27,15 @@ def get_relates(slave_clazz: models.Model,
                 intersections: bool = True,):
     """return relates queryset"""
     related_object_ids = relation_clazz.objects.filter(
-        Q(**{master_key: master_id})).values_list(slave_key, flat=True)
+        Q(**{master_key: master_id})).filter(dropped_at=None).values_list(slave_key, flat=True)
 
     queryset = None
     if intersections:
         queryset = slave_clazz.objects.filter(id__in=related_object_ids)
     else:
         queryset = slave_clazz.objects.exclude(id__in=related_object_ids)
+
+    queryset = queryset.filter(dropped_at=None)  # remove deleted record
 
     role = login.role
     if role in (Login.CONTROLLER, Login.REGISTRATOR):
@@ -139,13 +141,18 @@ def _add_or_remove_relations(request, master_name: str, master_id: int, slave_na
 
     if adding_mode:
         success = getted_ids.difference(exists_ids)
-        for added_id in success:
+        exists = relation_clazz.objects \
+            .filter(**{master_key: master_id, (slave_key + '__in'): success})
+        exists.update(dropped_at=None)
+        not_exists = success.difference(exists.values_list('id', flat=True))
+
+        for new_id in not_exists:
             relation_clazz.objects.create(
-                **{slave_key: added_id, master_key: master_id})
+                **{slave_key: new_id, master_key: master_id})
     else:
         success = getted_ids.intersection(exists_ids)
-        relation_clazz.objects.filter(**{master_key: master_id}).filter(
-            **{(slave_key + '__in'): success}).delete()
+        relation_clazz.objects.filter(**{master_key: master_id, (slave_key + '__in'): success}) \
+            .update(dropped_at=datetime.now())
 
     failure = getted_ids.difference(success)
 
