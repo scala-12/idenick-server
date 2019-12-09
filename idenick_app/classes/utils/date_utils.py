@@ -43,7 +43,7 @@ class DateInfo:
         time = date.strftime('%H:%M')
         day = date.strftime('%d.%m.%Y')
         week_day = date.strftime('%a')
-        month = date.strftime('%B')
+        month = date.strftime('%B %Y')
 
         self.week_day = week_day
         self.day = day
