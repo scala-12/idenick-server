@@ -74,22 +74,27 @@ class OrganizationSerializers:
             return None if obj.timezone is None else date_utils.duration_UTC_to_str(obj.timezone)
 
         def get_departments_count(self, obj):
-            return Department.objects.filter(organization=obj).count()
+            return Department.objects.filter(organization=obj, dropped_at=None).count()
 
         def get_controllers_count(self, obj):
-            return Login.objects.filter(role=Login.CONTROLLER, organization=obj).count()
+            return Login.objects.filter(role=Login.CONTROLLER, organization=obj,
+                                        dropped_at=None).count()
 
         def get_registrators_count(self, obj):
-            return Login.objects.filter(role=Login.REGISTRATOR, organization=obj).count()
+            return Login.objects.filter(role=Login.REGISTRATOR, organization=obj,
+                                        dropped_at=None).count()
 
         def get_employees_count(self, obj):
-            return Employee2Organization.objects.filter(organization_id=obj.id).count()
+            return Employee2Organization.objects.filter(organization_id=obj.id,
+                                                        dropped_at=None).count()
 
         def get_devices_count(self, obj):
-            return Device2Organization.objects.filter(organization_id=obj.id).count()
+            return Device2Organization.objects.filter(organization_id=obj.id,
+                                                      dropped_at=None).count()
 
         def get_device_groups_count(self, obj):
-            return DeviceGroup2Organization.objects.filter(organization_id=obj.id).count()
+            return DeviceGroup2Organization.objects.filter(organization_id=obj.id,
+                                                           dropped_at=None).count()
 
         class Meta:
             model = Organization
@@ -143,7 +148,8 @@ class DepartmentSerializers:
         employees_count = serializers.SerializerMethodField()
 
         def get_employees_count(self, obj):
-            queryset = Employee2Department.objects.filter(department=obj)
+            queryset = Employee2Department.objects.filter(
+                department=obj, dropped_at=None)
 
             if 'organization' in self.context:
                 organization = self.context['organization']
@@ -204,10 +210,11 @@ class EmployeeSerializers():
         departments_count = serializers.SerializerMethodField()
 
         def get_organizations_count(self, obj):
-            return Employee2Organization.objects.filter(employee_id=obj.id).count()
+            return Employee2Organization.objects.filter(employee_id=obj.id, dropped_at=None).count()
 
         def get_departments_count(self, obj):
-            queryset = Employee2Department.objects.filter(employee_id=obj.id)
+            queryset = Employee2Department.objects.filter(
+                employee_id=obj.id, dropped_at=None)
 
             if 'organization' in self.context:
                 organization = self.context['organization']
@@ -335,7 +342,7 @@ class DeviceGroupSerializers:
 
         def get_devices_count(self, obj):
             queryset = Device2DeviceGroup.objects.filter(
-                device_group_id=obj.id)
+                device_group_id=obj.id, dropped_at=None)
 
             if 'organization' in self.context:
                 organization = self.context['organization']
@@ -347,7 +354,8 @@ class DeviceGroupSerializers:
             return queryset.count()
 
         def get_organizations_count(self, obj):
-            return DeviceGroup2Organization.objects.filter(device_group_id=obj.id).count()
+            return DeviceGroup2Organization.objects.filter(device_group_id=obj.id,
+                                                           dropped_at=None).count()
 
         class Meta:
             model = DeviceGroup
@@ -405,19 +413,21 @@ class DeviceSerializers:
             return None if obj.timezone is None else date_utils.duration_UTC_to_str(obj.timezone)
 
         def get_device_groups_count(self, obj):
-            queryset = Device2DeviceGroup.objects.filter(device_id=obj.id)
+            queryset = Device2DeviceGroup.objects.filter(
+                device_id=obj.id, dropped_at=None)
 
             if 'organization' in self.context:
                 organization = self.context['organization']
                 if organization is not None:
                     queryset = queryset.filter(
                         device_group_id__in=DeviceGroup2Organization.objects
-                        .filter(organization_id=organization).values_list('device_group', flat=True))
+                        .filter(organization_id=organization).values_list('device_group',
+                                                                          flat=True))
 
             return queryset.count()
 
         def get_organizations_count(self, obj):
-            return Device2Organization.objects.filter(device_id=obj.id).count()
+            return Device2Organization.objects.filter(device_id=obj.id, dropped_at=None).count()
 
         class Meta:
             model = Device

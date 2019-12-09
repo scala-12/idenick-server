@@ -470,16 +470,16 @@ class EmployeeViewSet(_AbstractViewSet):
 
         login = login_utils.get_login(request.user)
 
-        organization_filter = None
+        organization_filter = {'id': None, 'with_dropped': False}
         if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
-            organization_filter = {'id': login.organization_id}
+            organization_filter.update(id=login.organization_id)
             if with_dropped:
                 organization_filter.update(with_dropped=True)
         elif login.role == Login.ADMIN:
             if not with_dropped:
                 queryset = queryset.filter(dropped_at=None)
-            organization_filter = {'id': request_utils.get_request_param(
-                request, 'organization', True, base_filter=base_filter), }
+            organization_filter.update(id=request_utils.get_request_param(
+                request, 'organization', True, base_filter=base_filter))
 
         if not base_filter:
             name_filter = request_utils.get_request_param(request, 'name')
@@ -499,14 +499,13 @@ class EmployeeViewSet(_AbstractViewSet):
                 id__in=Employee2Department.objects.filter(
                     department_id=department_filter).values_list('employee', flat=True))
 
-        if organization_filter is not None:
+        if organization_filter.get('id') is not None:
             employee_id_list = queryset.values_list('id', flat=True)
             filter_props = {
                 'organization_id': organization_filter.get('id'),
                 'employee_id__in': employee_id_list
             }
-            if (not ('with_dropped' in organization_filter)) \
-                    or (not organization_filter.get('with_dropped')):
+            if not organization_filter.get('with_dropped'):
                 filter_props.update(dropped_at=None)
 
             queryset = queryset.filter(id__in=Employee2Organization.objects.filter(**filter_props)
@@ -791,16 +790,16 @@ class DeviceViewSet(_AbstractViewSet):
 
         login = login_utils.get_login(request.user)
 
-        organization_filter = None
+        organization_filter = {'id': None, 'with_dropped': False}
         if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
-            organization_filter = {'id': login.organization_id}
+            organization_filter.update(id=login.organization_id)
             if with_dropped:
                 organization_filter.update(with_dropped=True)
         elif login.role == Login.ADMIN:
             if not with_dropped:
                 queryset = queryset.filter(dropped_at=None)
-            organization_filter = {'id': request_utils.get_request_param(
-                request, 'organization', True, base_filter=base_filter), }
+            organization_filter.update(id=request_utils.get_request_param(
+                request, 'organization', True, base_filter=base_filter))
 
         if not base_filter:
             name_filter = request_utils.get_request_param(request, 'name')
@@ -815,14 +814,13 @@ class DeviceViewSet(_AbstractViewSet):
                                                           'device_group_id', device_group_filter,
                                                           login).values_list('id', flat=True))
 
-        if organization_filter is not None:
+        if organization_filter.get('id') is not None:
             device_id_list = queryset.values_list('id', flat=True)
             filter_props = {
                 'organization_id': organization_filter.get('id'),
                 'device_id__in': device_id_list
             }
-            if (not ('with_dropped' in organization_filter)) \
-                    or (not organization_filter.get('with_dropped')):
+            if not organization_filter.get('with_dropped'):
                 filter_props.update(dropped_at=None)
 
             queryset = queryset.filter(id__in=Device2Organization.objects.filter(**filter_props)
@@ -1095,10 +1093,10 @@ def get_current_user(request):
 @api_view(['GET'])
 @login_utils.login_check_decorator(Login.ADMIN)
 def get_counts(request):
-    return Response({'organizations': Organization.objects.count(),
-                     'devices': Device.objects.count(),
-                     'deviceGroups': DeviceGroup.objects.count(),
-                     'employees': Employee.objects.count()})
+    return Response({'organizations': Organization.objects.filter(dropped_at=None).count(),
+                     'devices': Device.objects.filter(dropped_at=None).count(),
+                     'deviceGroups': DeviceGroup.objects.filter(dropped_at=None).count(),
+                     'employees': Employee.objects.filter(dropped_at=None).count()})
 
 
 @api_view(['GET'])
