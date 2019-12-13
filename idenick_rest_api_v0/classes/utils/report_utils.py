@@ -10,11 +10,10 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.http import FileResponse
 
 from idenick_app.classes.utils import date_utils
-from idenick_app.models import (Department, Device, Device2DeviceGroup,
-                                Device2Organization, DeviceGroup2Organization,
-                                Employee, Employee2Department,
-                                Employee2Organization, EmployeeRequest, Login,
-                                Organization)
+from idenick_app.models import (Department, Device, Device2Organization,
+                                DeviceGroup2Organization, Employee,
+                                Employee2Department, Employee2Organization,
+                                EmployeeRequest, Login, Organization)
 from idenick_rest_api_v0.classes.utils import login_utils, request_utils, utils
 from idenick_rest_api_v0.serializers import (DepartmentSerializers,
                                              DeviceSerializers,
@@ -92,7 +91,7 @@ def _get_report(request) -> _ReportQuerysetInfo:
                     organization_id=entity_id).values_list('employee_id', flat=True)
                 devices_of_organization = Device2Organization.objects.filter(
                     organization_id=entity_id).values_list('device_id', flat=True)
-                devices_of_device_groups = Device2DeviceGroup.objects\
+                devices_of_device_groups = Device.objects\
                     .filter(device_group__in=DeviceGroup2Organization.objects.filter(
                         organization_id=entity_id).values_list('device_group_id', flat=True))
 
@@ -124,7 +123,7 @@ def _get_report(request) -> _ReportQuerysetInfo:
             if (organization_filter is None) \
                     or DeviceGroup2Organization.objects.filter(device_group_id=entity_id) \
             .filter(organization_id=organization_filter).exists():
-                devices = Device2DeviceGroup.objects.filter(
+                devices = Device.objects.filter(
                     device_group_id=entity_id).values_list('device_id', flat=True)
 
                 if organization_filter is not None:

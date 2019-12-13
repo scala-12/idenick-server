@@ -184,6 +184,9 @@ class Device(AbstractTimezonedEntry):
     description = models.CharField(max_length=500, blank=True, null=True,)
     device_type = models.IntegerField(db_column='type', default=0)
     config = models.CharField(max_length=2000, blank=True, null=True,)
+    device_group = models.ForeignKey(
+        'DeviceGroup', db_column='devicegroupsid', related_name='devices',
+        on_delete=models.CASCADE, blank=True, null=True, default=None,)
 
     def __str__(self):
         return self._str() + ('mqtt[%s] [%s] [%s] [%s] [%s] with config [%s]'
@@ -245,21 +248,6 @@ class Employee2Organization(AbstractEntry):
 
     class Meta:
         unique_together = (('employee', 'organization'),)
-
-
-class Device2DeviceGroup(AbstractEntry):
-    """Model of relation between device and device group"""
-    device_group = models.ForeignKey(
-        'DeviceGroup', db_column='devicegroupid', related_name='devices', on_delete=models.CASCADE)
-    device = models.ForeignKey(
-        'Device', db_column='devicesid', related_name='device_groups', on_delete=models.CASCADE)
-
-    def __str__(self):
-        return self._str() + ('[%s] in [%s]' % (self.device, self.device_group))
-
-    class Meta:
-        unique_together = (('device', 'device_group'),)
-        db_table = 'devices_devicegroup'
 
 
 class Device2Organization(AbstractEntry):

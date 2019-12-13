@@ -6,11 +6,11 @@ from django.http.request import QueryDict
 from rest_framework import serializers
 
 from idenick_app.classes.utils import date_utils
-from idenick_app.models import (Department, Device, Device2DeviceGroup,
-                                Device2Organization, DeviceGroup,
-                                DeviceGroup2Organization, Employee,
-                                Employee2Department, Employee2Organization,
-                                EmployeeRequest, Login, Organization)
+from idenick_app.models import (Department, Device, Device2Organization,
+                                DeviceGroup, DeviceGroup2Organization,
+                                Employee, Employee2Department,
+                                Employee2Organization, EmployeeRequest, Login,
+                                Organization)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -367,14 +367,14 @@ class DeviceGroupSerializers:
         organizations_count = serializers.SerializerMethodField()
 
         def get_devices_count(self, obj):
-            queryset = Device2DeviceGroup.objects.filter(
+            queryset = Device.objects.filter(
                 device_group_id=obj.id, dropped_at=None)
 
             if 'organization' in self.context:
                 organization = self.context['organization']
                 if organization is not None:
                     queryset = queryset.filter(
-                        device_id__in=Device2Organization.objects
+                        id__in=Device2Organization.objects
                         .filter(organization_id=organization).values_list('device', flat=True))
 
             return queryset.count()
@@ -410,9 +410,20 @@ class DeviceSerializers:
                 'name',
                 'description',
                 'device_type',
+                'device_group',
                 'config',
                 'timezone',
             ]
+
+        def to_representation(self, obj):
+            represent = QueryDict('', mutable=True)
+            represent.update(obj)
+            device_group = obj.get('device_group', '')
+            if not(isinstance(device_group, int)):
+                represent.__setitem__('device_group', None if (
+                    device_group == '') else int(device_group))
+
+            return represent
 
     class UpdateSerializer(serializers.ModelSerializer):
         """Serializer for update device-model"""
@@ -424,33 +435,30 @@ class DeviceSerializers:
                 'mqtt',
                 'name',
                 'description',
+                'device_group',
                 'config',
                 'timezone',
             ]
 
+        def to_representation(self, obj):
+            represent = QueryDict('', mutable=True)
+            represent.update(obj)
+            device_group = obj.get('device_group', '')
+            if not(isinstance(device_group, int)):
+                represent.__setitem__('device_group', None if (
+                    device_group == '') else int(device_group))
+
+            return represent
+
     class ModelSerializer(serializers.ModelSerializer):
         """Serializer for show device-model"""
 
-        device_groups_count = serializers.SerializerMethodField()
         organizations_count = serializers.SerializerMethodField()
         timezone = serializers.SerializerMethodField()
+        device_group = serializers.PrimaryKeyRelatedField(read_only=True)
 
         def get_timezone(self, obj):
             return None if obj.timezone is None else date_utils.duration_UTC_to_str(obj.timezone)
-
-        def get_device_groups_count(self, obj):
-            queryset = Device2DeviceGroup.objects.filter(
-                device_id=obj.id, dropped_at=None)
-
-            if 'organization' in self.context:
-                organization = self.context['organization']
-                if organization is not None:
-                    queryset = queryset.filter(
-                        device_group_id__in=DeviceGroup2Organization.objects
-                        .filter(organization_id=organization).values_list('device_group',
-                                                                          flat=True))
-
-            return queryset.count()
 
         def get_organizations_count(self, obj):
             return Device2Organization.objects.filter(device_id=obj.id, dropped_at=None).count()
@@ -465,8 +473,8 @@ class DeviceSerializers:
                 'name',
                 'description',
                 'device_type',
+                'device_group',
                 'config',
-                'device_groups_count',
                 'organizations_count',
                 'timezone',
             ]

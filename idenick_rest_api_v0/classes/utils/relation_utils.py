@@ -6,7 +6,7 @@ from typing import List, Optional, Set, Union
 from django.db.models.query_utils import Q
 from rest_framework import serializers
 
-from idenick_app.models import (AbstractSimpleEntry, Department, Device, Device2DeviceGroup,
+from idenick_app.models import (AbstractSimpleEntry, Department, Device,
                                 Device2Organization, DeviceGroup,
                                 DeviceGroup2Organization, Employee,
                                 Employee2Department, Employee2Organization,
@@ -62,8 +62,6 @@ def _get_relation_clazz(info1: EntityClassInfo,
     if clazz1 is DeviceGroup:
         if clazz2 is Organization:
             result = DeviceGroup2Organization
-        elif clazz2 is Device:
-            result = Device2DeviceGroup
     elif clazz1 is Device:
         if clazz2 is Organization:
             result = Device2Organization
@@ -86,36 +84,45 @@ def get_relates(slave_info: EntityClassInfo,
 
     queryset = None
     relation_clazz = None
-
-    relation_clazz = _get_relation_clazz(master_info, slave_info)
-    related_object_ids = relation_clazz.objects.filter(
-        Q(**{master_info.key: master_id}))\
-        .filter(dropped_at=None).values_list(slave_info.key, flat=True)
-    if intersections:
-        queryset = slave_info.model.objects.filter(
-            id__in=related_object_ids)
+    is_device_2_device_group = (master_info.model is DeviceGroup) and (
+        slave_info.model is Device)
+    if is_device_2_device_group:
+        if intersections:
+            queryset = slave_info.model.objects.filter(
+                **{master_info.key: master_id})
+        else:
+            queryset = slave_info.model.objects.exclude(
+                **{master_info.key: master_id}).filter(**{master_info.key: None})
     else:
-        queryset = slave_info.model.objects.exclude(
-            id__in=related_object_ids)
+        relation_clazz = _get_relation_clazz(master_info, slave_info)
+        related_object_ids = relation_clazz.objects.filter(
+            Q(**{master_info.key: master_id}))\
+            .filter(dropped_at=None).values_list(slave_info.key, flat=True)
+        if intersections:
+            queryset = slave_info.model.objects.filter(
+                id__in=related_object_ids)
+        else:
+            queryset = slave_info.model.objects.exclude(
+                id__in=related_object_ids)
 
     queryset = queryset.filter(dropped_at=None)  # remove deleted record
 
     role = login.role
     if role in (Login.CONTROLLER, Login.REGISTRATOR):
         organization = login.organization_id
-        if relation_clazz is Employee2Department:
+        if is_device_2_device_group:
+            queryset = queryset\
+                .filter(id__in=Device2Organization.objects
+                        .filter(
+                            organization_id=organization).values_list(slave_info.key, flat=True))\
+                .filter(**{master_info.key + '__in': DeviceGroup2Organization.objects.filter(
+                    organization_id=organization).values_list(master_info.key, flat=True)})
+        elif relation_clazz is Employee2Department:
             if slave_info.model is Employee:
                 queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
                     organization_id=organization).values_list('employee', flat=True))
             elif slave_info.model is Department:
                 queryset = queryset.filter(organization_id=organization)
-        elif relation_clazz is Device2DeviceGroup:
-            if slave_info.model is Device:
-                queryset = queryset.filter(id__in=Device2Organization.objects.filter(
-                    organization_id=organization).values_list('device', flat=True))
-            elif slave_info.model is DeviceGroup:
-                queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
-                    organization_id=organization).values_list('device_group', flat=True))
 
     return queryset
 
@@ -151,23 +158,52 @@ def _add_or_remove_relations(request,
     success = getted_ids.difference(
         exists_ids) if adding_mode else getted_ids.intersection(exists_ids)
 
-    master_key = master_info.key
-    slave_key = slave_info.key
-    relation_clazz = _get_relation_clazz(master_info, slave_info)
-    if adding_mode:
-        exists = relation_clazz.objects \
-            .filter(**{master_key: master_id, (slave_key + '__in'): success})
-        exists.update(dropped_at=None)
-        not_exists = success.difference(
-            exists.values_list(slave_key, flat=True))
-
-        for new_id in not_exists:
-            relation_clazz.objects.create(
-                **{slave_key: new_id, master_key: master_id})
+    if (master_info.model is DeviceGroup) and (slave_info.model is Device):
+        if adding_mode:
+            slave_info.model.objects.filter(
+                id__in=success).update(device_group_id=master_id)
+        else:
+            slave_info.model.objects.filter(
+                device_group_id=master_id).update(device_group_id=None)
     else:
-        relation_clazz.objects \
-            .filter(**{master_key: master_id, (slave_key + '__in'): success}) \
-            .update(dropped_at=datetime.now())
+        master_key = master_info.key
+        slave_key = slave_info.key
+        relation_clazz = _get_relation_clazz(master_info, slave_info)
+        if adding_mode:
+            exists = relation_clazz.objects \
+                .filter(**{master_key: master_id, (slave_key + '__in'): success})
+            exists.update(dropped_at=None)
+            not_exists = success.difference(
+                exists.values_list(slave_key, flat=True))
+
+            for new_id in not_exists:
+                relation_clazz.objects.create(
+                    **{slave_key: new_id, master_key: master_id})
+
+            if relation_clazz is Device2Organization:
+                _master = {'model': None, 'id': None}
+                _slave = {'model': None, 'ids': None}
+                if master_info.model is Organization:
+                    _master.update(model=Organization, id=master_id)
+                    _slave.update(model=DeviceGroup,
+                                  ids=set(Device.objects.filter(id__in=getted_ids)
+                                          .exclude(device_group=None)
+                                          .values_list('device_group_id', flat=True)))
+                else:
+                    _master.update(model=DeviceGroup, id=Device.objects.filter(id=master_id)
+                                   .values_list('device_group_id', flat=True)[0])
+                    _slave.update(model=Organization, ids=getted_ids)
+
+                if (_master.get('id') is not None) and (len(_slave.get('ids')) > 0):
+                    _add_or_remove_relations(request,
+                                             _master.get('model'),
+                                             _master.get('id'),
+                                             _slave.get('model'),
+                                             getted_ids=_slave.get('ids'))
+        else:
+            relation_clazz.objects \
+                .filter(**{master_key: master_id, (slave_key + '__in'): success}) \
+                .update(dropped_at=datetime.now())
 
     failure = getted_ids.difference(success)
 

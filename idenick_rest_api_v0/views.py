@@ -15,10 +15,10 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from idenick_app.models import (AbstractEntry, Department, Device,
-                                Device2DeviceGroup, Device2Organization,
-                                DeviceGroup, DeviceGroup2Organization,
-                                Employee, Employee2Department,
-                                Employee2Organization, Login, Organization)
+                                Device2Organization, DeviceGroup,
+                                DeviceGroup2Organization, Employee,
+                                Employee2Department, Employee2Organization,
+                                Login, Organization)
 from idenick_rest_api_v0.classes.utils import (login_utils, relation_utils,
                                                report_utils, request_utils,
                                                utils)
@@ -809,10 +809,7 @@ class DeviceViewSet(_AbstractViewSet):
         device_group_filter = request_utils.get_request_param(
             request, 'deviceGroup', True, base_filter=base_filter)
         if device_group_filter is not None:
-            queryset = queryset \
-                .filter(id__in=relation_utils.get_relates(Device, 'device_id', Device2DeviceGroup,
-                                                          'device_group_id', device_group_filter,
-                                                          login).values_list('id', flat=True))
+            queryset = queryset.filter(device_group_id=device_group_filter)
 
         if organization_filter.get('id') is not None:
             device_id_list = queryset.values_list('id', flat=True)
@@ -860,7 +857,10 @@ class DeviceViewSet(_AbstractViewSet):
     def create(self, request):
         login = login_utils.get_login(request.user)
         serializer_class = self.get_serializer_class()
-        serializer = serializer_class(data=request.data)
+        device_data = request.data
+        device_data.device_group = request_utils.get_request_param(
+            request, 'deviceGroup', is_int=True)
+        serializer = serializer_class(data=device_data)
         result = None
         if serializer.is_valid():
             device = Device(**serializer.data)
@@ -876,12 +876,6 @@ class DeviceViewSet(_AbstractViewSet):
             if organization is not None:
                 Device2Organization.objects.create(
                     **{'organization_id': organization, 'device_id': device.id})
-
-            device_group = request_utils.get_request_param(
-                request, 'deviceGroup', is_int=True)
-            if device_group is not None:
-                Device2DeviceGroup.objects.create(
-                    **{'device_group_id': device_group, 'device_id': device.id})
 
             result = self._response4update_n_create(
                 data=device, code=status.HTTP_201_CREATED)
@@ -978,13 +972,6 @@ class DeviceGroupViewSet(_AbstractViewSet):
             queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
                 device_group_id__in=group_id_list).filter(
                 organization_id=organization_filter).values_list('device_group_id', flat=True))
-        device_filter = request_utils.get_request_param(
-            request, 'device', True, base_filter=base_filter)
-        if device_filter is not None:
-            group_id_list = queryset.values_list('id', flat=True)
-            queryset = queryset.filter(id__in=Device2DeviceGroup.objects.filter(
-                device_group_id__in=group_id_list).filter(
-                device_id=device_filter).values_list('device_group_id', flat=True))
 
         return queryset
 
@@ -1023,13 +1010,6 @@ class DeviceGroupViewSet(_AbstractViewSet):
             if organization is not None:
                 DeviceGroup2Organization.objects.create(
                     **{'organization_id': organization,
-                       'device_group_id': group.id})
-
-            device = request_utils.get_request_param(
-                request, 'device', is_int=True)
-            if device is not None:
-                Device2DeviceGroup.objects.create(
-                    **{'device_id': device,
                        'device_group_id': group.id})
 
             result = self._response4update_n_create(
