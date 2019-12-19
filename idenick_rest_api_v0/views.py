@@ -969,8 +969,9 @@ class DeviceGroupViewSet(_AbstractViewSet):
         if organization_filter is not None:
             group_id_list = queryset.values_list('id', flat=True)
             queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
-                device_group_id__in=group_id_list).filter(
-                organization_id=organization_filter).values_list('device_group_id', flat=True))
+                device_group_id__in=group_id_list,
+                organization_id=organization_filter,
+                dropped_at=None).values_list('device_group_id', flat=True))
 
         return queryset
 
