@@ -839,17 +839,24 @@ class DeviceViewSet(_AbstractViewSet):
 
         login = login_utils.get_login(request.user)
 
-        if ('full' in request.GET) and ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
+        if 'full' in request.GET:
             entity = result.get('data')
-            if entity.get('dropped_at') is None:
-                dropped_at = Device2Organization.objects.get(
-                    device=pk, organization=login.organization).dropped_at
-                if not (dropped_at is None):
-                    entity.update(dropped_at=dropped_at.isoformat())
-                    result.update(data=entity)
+            if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
+                if entity.get('dropped_at') is None:
+                    dropped_at = Device2Organization.objects.get(
+                        device=pk, organization=login.organization).dropped_at
+                    if not (dropped_at is None):
+                        entity.update(dropped_at=dropped_at.isoformat())
+                        result.update(data=entity)
 
-            result.update({'organization': OrganizationSerializers.ModelSerializer(
-                Organization.objects.get(id=login.organization_id)).data})
+                result.update({'organization': OrganizationSerializers.ModelSerializer(
+                    Organization.objects.get(id=login.organization_id)).data})
+
+            device_group_id = entity.get('device_group')
+            if device_group_id is not None:
+                result.update({'device_group':
+                               DeviceGroupSerializers.ModelSerializer(
+                                   DeviceGroup.objects.get(id=device_group_id)).data})
 
         return request_utils.response(result)
 
