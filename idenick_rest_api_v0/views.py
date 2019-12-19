@@ -858,12 +858,10 @@ class DeviceViewSet(_AbstractViewSet):
         login = login_utils.get_login(request.user)
         serializer_class = self.get_serializer_class()
         device_data = request.data
-        device_data.device_group = request_utils.get_request_param(
-            request, 'deviceGroup', is_int=True)
         serializer = serializer_class(data=device_data)
         result = None
         if serializer.is_valid():
-            device = Device(**serializer.data)
+            device = Device(**serializer_class(device_data).data)
             device.save()
 
             organization = None
@@ -927,6 +925,7 @@ class DeviceViewSet(_AbstractViewSet):
                 entity.description = update.description
                 entity.config = update.config
                 entity.timezone = update.timezone
+                entity.device_group = update.device_group
                 entity.save()
                 result = self._response4update_n_create(data=entity)
             else:

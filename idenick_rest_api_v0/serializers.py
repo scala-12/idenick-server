@@ -402,6 +402,15 @@ class DeviceSerializers:
     class CreateSerializer(serializers.ModelSerializer):
         """Serializer for create device-model"""
         timezone = _TimezoneField()
+        device_group = serializers.SerializerMethodField()
+
+        def get_device_group(self, obj):
+            device_group = obj.get('device_group', '')
+            result = None
+            if isinstance(device_group, str):
+                result = None if (device_group == '') \
+                    else DeviceGroup.objects.get(id=int(device_group))
+            return result
 
         class Meta:
             model = Device
@@ -415,19 +424,18 @@ class DeviceSerializers:
                 'timezone',
             ]
 
-        def to_representation(self, obj):
-            represent = QueryDict('', mutable=True)
-            represent.update(obj)
-            device_group = obj.get('device_group', '')
-            if not(isinstance(device_group, int)):
-                represent.__setitem__('device_group', None if (
-                    device_group == '') else int(device_group))
-
-            return represent
-
     class UpdateSerializer(serializers.ModelSerializer):
         """Serializer for update device-model"""
         timezone = _TimezoneField()
+        device_group = serializers.SerializerMethodField()
+
+        def get_device_group(self, obj):
+            device_group = obj.get('device_group', '')
+            result = None
+            if isinstance(device_group, str):
+                result = None if (device_group == '') \
+                    else DeviceGroup.objects.get(id=int(device_group))
+            return result
 
         class Meta:
             model = Device
@@ -439,16 +447,6 @@ class DeviceSerializers:
                 'config',
                 'timezone',
             ]
-
-        def to_representation(self, obj):
-            represent = QueryDict('', mutable=True)
-            represent.update(obj)
-            device_group = obj.get('device_group', '')
-            if not(isinstance(device_group, int)):
-                represent.__setitem__('device_group', None if (
-                    device_group == '') else int(device_group))
-
-            return represent
 
     class ModelSerializer(serializers.ModelSerializer):
         """Serializer for show device-model"""
