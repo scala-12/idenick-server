@@ -412,8 +412,8 @@ class DepartmentViewSet(_AbstractViewSet):
     @login_utils.login_check_decorator(Login.REGISTRATOR)
     def partial_update(self, request, pk=None):
         login = login_utils.get_login(request.user)
-        delete_restore_mode = (login.role == Login.ADMIN) \
-            and (('delete' in request.data) or ('restore' in request.data))
+        delete_restore_mode = ('delete' in request.data) or (
+            'restore' in request.data)
 
         entity: Department = get_object_or_404(
             self._get_queryset(request, with_dropped=delete_restore_mode), pk=pk)
