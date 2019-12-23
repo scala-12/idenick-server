@@ -42,7 +42,7 @@ class AbstractTimezonedEntry(AbstractEntry):
     timezone = models.DurationField(default=None, null=True, blank=True,)
 
     def save(self, *args, **kwargs):
-        if (not self.timezone) or (self.timezone > datetime.timedelta(hours=14)) \
+        if (self.timezone > datetime.timedelta(hours=14)) \
                 or (self.timezone < datetime.timedelta(hours=-12)):
             self.timezone = None
         super(AbstractTimezonedEntry, self).save(*args, **kwargs)
