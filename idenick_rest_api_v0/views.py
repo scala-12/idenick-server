@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from django.contrib.auth.models import User
 from django.db.models.expressions import Value
@@ -10,15 +10,14 @@ from django.db.models.functions.text import Concat
 from django.db.models.query_utils import Q
 from django.http.request import QueryDict
 from django.shortcuts import get_object_or_404
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from idenick_app.models import (AbstractEntry, Department, Device,
-                                Device2Organization, DeviceGroup,
-                                DeviceGroup2Organization, Employee,
-                                Employee2Department, Employee2Organization,
-                                Login, Organization)
+from idenick_app.models import (
+    AbstractEntry, Department, Device,
+    Device2Organization, DeviceGroup, DeviceGroup2Organization, Employee,
+    Employee2Department, Employee2Organization, Login, Organization)
 from idenick_rest_api_v0.classes.utils import (login_utils, relation_utils,
                                                report_utils, request_utils,
                                                utils)
@@ -39,7 +38,7 @@ class _ErrorMessage(Enum):
 
 
 class _AbstractViewSet(viewsets.ViewSet):
-    _serializer_classes = None
+    _serializer_classes: Dict[str, serializers.ModelSerializer] = None
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         pass
@@ -84,9 +83,9 @@ class _AbstractViewSet(viewsets.ViewSet):
                 status=code)
         return result
 
-    def get_serializer_class(self):
+    def get_serializer_class(self) -> serializers.ModelSerializer:
         """return serializer by action"""
-        return self._serializer_classes[self.action]
+        return self._serializer_classes.get(self.action)
 
     def _list_data(self, request, queryset=None):
         _queryset = self._get_queryset(request) if (
@@ -172,9 +171,16 @@ class _AbstractViewSet(viewsets.ViewSet):
     def _alternative_valid(self, pk, data, errors, extra=None):
         return False
 
-    def _validate_on_update(self, pk, serializer_class, Object_class, data, extra=None):
+    def _validate_on_update(self,
+                            pk: str,
+                            serializer_class: serializers.ModelSerializer,
+                            Object_class: AbstractEntry,
+                            data: Dict[str, str],
+                            extra: Optional[Any] = None
+                            ):
         update = None
-        serializer = serializer_class(data=data)
+        serializer = serializer_class(
+            data=data, context={'entity_id': int(pk)})
         if serializer.is_valid():
             update = Object_class(**serializer.data)
         elif self._alternative_valid(pk, data, serializer.errors, extra):
@@ -918,13 +924,8 @@ class DeviceViewSet(_AbstractViewSet):
         else:
             serializer_class = self.get_serializer_class()
 
-            device_data = QueryDict('', mutable=True)
-            device_data.update(request.data)
-            device_data.update({'mqtt': entity.mqtt})
-            device_data.update({'device_type': entity.device_type})
-
             valid_result = self._validate_on_update(
-                pk, serializer_class, Device, device_data)
+                pk, serializer_class, Device, request.data)
             serializer = valid_result.get('serializer')
             update = valid_result.get('update')
             if update is not None:

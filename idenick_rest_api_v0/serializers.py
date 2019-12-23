@@ -428,6 +428,7 @@ class DeviceSerializers:
         """Serializer for update device-model"""
         timezone = _TimezoneField()
         device_group = serializers.SerializerMethodField()
+        mqtt = serializers.SerializerMethodField()
 
         def get_device_group(self, obj):
             device_group = obj.get('device_group', '')
