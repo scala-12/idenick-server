@@ -93,7 +93,8 @@ def _get_report(request) -> _ReportQuerysetInfo:
                     organization_id=entity_id).values_list('device_id', flat=True)
                 devices_of_device_groups = Device.objects\
                     .filter(device_group__in=DeviceGroup2Organization.objects.filter(
-                        organization_id=entity_id).values_list('device_group_id', flat=True))
+                        organization_id=entity_id).values_list('device_group_id', flat=True))\
+                    .values_list('id', flat=True)
 
                 devices = devices_of_organization.union(
                     devices_of_device_groups)
