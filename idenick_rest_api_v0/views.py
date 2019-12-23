@@ -473,6 +473,8 @@ class EmployeeViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Employee.objects.all()
+        if not with_dropped:
+            queryset = queryset.filter(dropped_at=None)
 
         login = login_utils.get_login(request.user)
 
@@ -482,8 +484,6 @@ class EmployeeViewSet(_AbstractViewSet):
             if with_dropped:
                 organization_filter.update(with_dropped=True)
         elif login.role == Login.ADMIN:
-            if not with_dropped:
-                queryset = queryset.filter(dropped_at=None)
             organization_filter.update(id=request_utils.get_request_param(
                 request, 'organization', True, base_filter=base_filter))
 
@@ -793,6 +793,8 @@ class DeviceViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Device.objects.all()
+        if not with_dropped:
+            queryset = queryset.filter(dropped_at=None)
 
         login = login_utils.get_login(request.user)
 
@@ -802,8 +804,6 @@ class DeviceViewSet(_AbstractViewSet):
             if with_dropped:
                 organization_filter.update(with_dropped=True)
         elif login.role == Login.ADMIN:
-            if not with_dropped:
-                queryset = queryset.filter(dropped_at=None)
             organization_filter.update(id=request_utils.get_request_param(
                 request, 'organization', True, base_filter=base_filter))
 
