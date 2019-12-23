@@ -485,9 +485,9 @@ class EmployeeViewSet(_AbstractViewSet):
             name_filter = request_utils.get_request_param(request, 'name')
             if name_filter is not None:
                 queryset = queryset.annotate(
-                    full_name=Concat('last_name', Value(
+                    __full_name=Concat('last_name', Value(
                         ' '), 'first_name', Value(' '), 'patronymic'),
-                ).filter(Q(full_name__icontains=name_filter)
+                ).filter(Q(__full_name__icontains=name_filter)
                          | Q(last_name__icontains=name_filter)
                          | Q(first_name__icontains=name_filter)
                          | Q(patronymic__icontains=name_filter))
