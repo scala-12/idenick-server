@@ -338,7 +338,7 @@ class DepartmentViewSet(_AbstractViewSet):
         'list': DepartmentSerializers.ModelSerializer,
         'retrieve': DepartmentSerializers.ModelSerializer,
         'create': DepartmentSerializers.CreateSerializer,
-        'partial_update': DepartmentSerializers.CreateSerializer,
+        'partial_update': DepartmentSerializers.UpdateSerializer,
     }
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
@@ -393,11 +393,8 @@ class DepartmentViewSet(_AbstractViewSet):
     def create(self, request):
         serializer_class = self.get_serializer_class()
 
-        department_data = QueryDict('', mutable=True)
-        department_data.update(request.data)
-        department_data.update(
-            {'organization': login_utils.get_login(request.user).organization_id})
-        serializer = serializer_class(data=department_data)
+        serializer = serializer_class(data=request.data, context={
+            'organization': login_utils.get_login(request.user).organization_id})
         result = None
 
         if serializer.is_valid():
@@ -446,6 +443,7 @@ class DepartmentViewSet(_AbstractViewSet):
                 entity.rights = update.rights
                 entity.address = update.address
                 entity.description = update.description
+                entity.show_in_report = update.show_in_report
                 entity.save()
                 result = self._response4update_n_create(data=entity)
             else:

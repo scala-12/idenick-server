@@ -119,6 +119,16 @@ class DepartmentSerializers:
     """Serializers for department-model"""
     class CreateSerializer(serializers.ModelSerializer):
         """Serializer for create department-model"""
+        rights = serializers.SerializerMethodField()
+        organization = serializers.SerializerMethodField()
+
+        def get_rights(self, obj):
+            name = 'rights'
+            return int(obj.get(name)) if name in obj else 0
+
+        def get_organization(self, obj):
+            return Organization.objects.get(id=self.context['organization'])
+
         class Meta:
             model = Department
             fields = [
@@ -127,20 +137,26 @@ class DepartmentSerializers:
                 'address',
                 'description',
                 'organization',
+                'show_in_report',
             ]
 
-        def to_representation(self, obj):
-            represent = QueryDict('', mutable=True)
-            represent.update(obj)
-            rights = obj.get('rights', '')
-            if not(isinstance(obj.get('rights'), int)):
-                represent.__setitem__('rights', 0 if (
-                    rights == '') else int(rights))
-            if not(isinstance(obj.get('organization'), Organization)):
-                represent.__setitem__('organization', Organization.objects.get(
-                    pk=int(obj.get('organization'))))
+    class UpdateSerializer(serializers.ModelSerializer):
+        """Serializer for update department-model"""
+        rights = serializers.SerializerMethodField()
 
-            return represent
+        def get_rights(self, obj):
+            name = 'rights'
+            return int(obj.get(name)) if name in obj else 0
+
+        class Meta:
+            model = Department
+            fields = [
+                'name',
+                'rights',
+                'address',
+                'description',
+                'show_in_report',
+            ]
 
     class ModelSerializer(serializers.ModelSerializer):
         """Serializer for show department-model"""
@@ -172,6 +188,7 @@ class DepartmentSerializers:
                 'address',
                 'description',
                 'employees_count',
+                'show_in_report',
             ]
 
 
