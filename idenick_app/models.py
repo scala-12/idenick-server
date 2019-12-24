@@ -97,6 +97,7 @@ class Department(AbstractEntry):
     rights = models.IntegerField(default=0)
     address = models.CharField(max_length=500, blank=True, null=True,)
     description = models.CharField(max_length=500, blank=True, null=True,)
+    show_in_report = models.BooleanField(default=False)
 
     def __str__(self):
         return self._str() + ('organization[%s] [%s] with right[%s] address[%s] (%s)'
