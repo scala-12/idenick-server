@@ -191,6 +191,44 @@ class _HeaderInfo:
         self.sub = sub
 
 
+def _get_department(line) -> Optional[Department]:
+    """return department from report line"""
+    department = None
+    employee = line.get('employee')
+    if employee is None:
+        return department
+
+    employee_organizations = set(Employee2Organization.objects.filter(
+        employee=employee).values_list('organization_id', flat=True))
+    if not employee_organizations:
+        return department
+
+    device = line.get('device')
+    if device is not None:
+        device_organizations = set(Device2Organization.objects.filter(
+            device=device).values_list('organization_id', flat=True))
+        employee_organizations = employee_organizations.intersection(
+            device_organizations)
+        if not employee_organizations:
+            return department
+
+    employee_departments = Employee2Department.objects.filter(
+        employee=employee).values_list('department_id', flat=True)
+    if not employee_departments.exists():
+        return department
+
+    organizations = Organization.objects.filter(id__in=employee_organizations)
+    if not organizations:
+        return department
+    departments = Department.objects.filter(
+        id__in=employee_departments, organization_id__in=organizations)
+
+    if departments.exists():
+        department = departments.first()
+
+    return department
+
+
 class _ReportFileWriter:
     """class for creation with report file"""
     HEADERS = [
@@ -270,8 +308,10 @@ class _ReportFileWriter:
                              line.get('employee_name'))
             self._write_cell(self._row, _HeaderName.TIMESHEET_ID, 'нет в базе')
             self._write_cell(self._row, _HeaderName.POSITION, 'нет в базе')
-            # TODO: после добавления галочки "отображать в отчетах" для подразделения
-            self._write_cell(self._row, _HeaderName.DEPARTMENT, '-')
+
+            department = _get_department(line)
+            self._write_cell(self._row, _HeaderName.DEPARTMENT,
+                             '-' if department is None else department.name)
 
             self._write_cell(self._row, _HeaderName.FACT_TIME_START, '-')
             self._write_cell(self._row, _HeaderName.FACT_TIME_END, '-')

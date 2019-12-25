@@ -345,6 +345,8 @@ class EmployeeRequestSerializers:
             model = EmployeeRequest
             fields = [
                 'id',
+                'employee',
+                'device',
                 'employee_name',
                 'device_name',
                 'request_type',
