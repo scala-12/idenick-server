@@ -221,7 +221,7 @@ def _get_department(line) -> Optional[Department]:
     if not organizations:
         return department
     departments = Department.objects.filter(
-        id__in=employee_departments, organization_id__in=organizations)
+        id__in=employee_departments, organization_id__in=organizations, show_in_report=True)
 
     if departments.exists():
         department = departments.first()
