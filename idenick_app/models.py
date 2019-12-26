@@ -42,8 +42,8 @@ class AbstractTimezonedEntry(AbstractEntry):
     timezone = models.DurationField(default=None, null=True, blank=True,)
 
     def save(self, *args, **kwargs):
-        if (self.timezone > datetime.timedelta(hours=14)) \
-                or (self.timezone < datetime.timedelta(hours=-12)):
+        if (self.timezone is not None) and ((self.timezone > datetime.timedelta(hours=14))
+                                            or (self.timezone < datetime.timedelta(hours=-12))):
             self.timezone = None
         super(AbstractTimezonedEntry, self).save(*args, **kwargs)
 
@@ -368,6 +368,10 @@ class EmployeeRequest(models.Model):
     device = models.ForeignKey(
         'Device', db_column='devicesid', on_delete=models.CASCADE, null=True)
     templatesid = models.IntegerField(null=True)
+
+    @property
+    def device_group_name(self):
+        pass
 
     @property
     def employee_name(self):
