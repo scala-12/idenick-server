@@ -371,7 +371,9 @@ class EmployeeRequest(models.Model):
 
     @property
     def device_group_name(self):
-        pass
+        return self.device.device_group.name if (self.device is not None) \
+            and (self.device.device_group is not None) \
+            else None
 
     @property
     def employee_name(self):

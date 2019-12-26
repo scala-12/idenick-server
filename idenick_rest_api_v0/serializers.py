@@ -349,6 +349,7 @@ class EmployeeRequestSerializers:
                 'device',
                 'employee_name',
                 'device_name',
+                'device_group_name',
                 'request_type',
                 'response_type',
                 'description',

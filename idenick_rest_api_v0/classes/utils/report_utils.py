@@ -71,7 +71,7 @@ def _get_report(request) -> _ReportQuerysetInfo:
 
             if (organization_filter is None) or Employee2Organization.objects \
                     .filter(employee_id=entity_id).filter(organization_id=organization_filter) \
-            .exists():
+                .exists():
                 report_queryset = report_queryset.filter(
                     employee_id=entity_id)
             else:
@@ -113,7 +113,7 @@ def _get_report(request) -> _ReportQuerysetInfo:
 
             if (organization_filter is None) \
                     or Device2Organization.objects.filter(device_id=entity_id)\
-            .filter(organization_id=organization_filter).exists():
+                .filter(organization_id=organization_filter).exists():
                 report_queryset = report_queryset.filter(
                     device_id=entity_id)
             else:
@@ -123,7 +123,7 @@ def _get_report(request) -> _ReportQuerysetInfo:
 
             if (organization_filter is None) \
                     or DeviceGroup2Organization.objects.filter(device_group_id=entity_id) \
-            .filter(organization_id=organization_filter).exists():
+                .filter(organization_id=organization_filter).exists():
                 devices = Device.objects.filter(
                     device_group_id=entity_id).values_list('device_id', flat=True)
 
@@ -292,10 +292,13 @@ class _ReportFileWriter:
             if line.get('employee_name') is None:
                 line.update(employee_name=_ReportFileWriter._NOT_FOUNDED)
             if line.get('device_name') is None:
-                line.update(device_name=_ReportFileWriter._NOT_FOUNDED)
+                line.update(device_name=_ReportFileWriter._NOT_FOUNDED,
+                            device_group_name=_ReportFileWriter._NOT_FOUNDED)
+            if line.get('device_group_name') is None:
+                line.update(device_group_name='-')
 
-            # TODO: сделать связь прибор-проходная n:1
-            self._write_cell(self._row, _HeaderName.DEVICE_GROUP, '-')
+            self._write_cell(self._row, _HeaderName.DEVICE_GROUP,
+                             line.get('device_group_name'))
 
             date_info = line.get('date_info')
             self._write_cell(self._row, _HeaderName.MONTH,
