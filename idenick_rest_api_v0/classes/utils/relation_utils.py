@@ -163,8 +163,8 @@ def _add_or_remove_relations(request,
             slave_info.model.objects.filter(
                 id__in=success).update(device_group_id=master_id)
         else:
-            slave_info.model.objects.filter(
-                device_group_id=master_id).update(device_group_id=None)
+            slave_info.model.objects.filter(id__in=success,
+                                            device_group_id=master_id).update(device_group_id=None)
     else:
         master_key = master_info.key
         slave_key = slave_info.key
