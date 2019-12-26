@@ -181,10 +181,8 @@ class _AbstractViewSet(viewsets.ViewSet):
         update = None
         serializer = serializer_class(
             data=data, context={'entity_id': int(pk)})
-        if serializer.is_valid():
-            update = Object_class(**serializer.data)
-        elif self._alternative_valid(pk, data, serializer.errors, extra):
-            serializer = serializer_class(data)
+        if serializer.is_valid() or self._alternative_valid(pk, data, serializer.errors, extra):
+            serializer = serializer_class(data, context={'entity_id': int(pk)})
             update = Object_class(**serializer.data)
 
         return {'update': update, 'serializer': serializer}
