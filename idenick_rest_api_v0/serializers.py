@@ -6,11 +6,11 @@ from django.http.request import QueryDict
 from rest_framework import serializers
 
 from idenick_app.classes.utils import date_utils
-from idenick_app.models import (Department, Device, Device2Organization,
-                                DeviceGroup, DeviceGroup2Organization,
-                                Employee, Employee2Department,
-                                Employee2Organization, EmployeeRequest, Login,
-                                Organization)
+from idenick_app.models import (AbstractEntry, Department, Device,
+                                Device2Organization, DeviceGroup,
+                                DeviceGroup2Organization, Employee,
+                                Employee2Department, Employee2Organization,
+                                EmployeeRequest, Login, Organization)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -43,6 +43,17 @@ class _DateInfoSerializer(serializers.ModelSerializer):
             'time',
             'utc',
         ]
+
+
+def _get_related_entities_count(Relation_class: AbstractEntry,
+                                relation_filter: dict,
+                                Object_class: AbstractEntry,
+                                relation_field: str):
+    relation_filter.update(dropped_at=None)
+    ids = Relation_class.objects.filter(
+        **relation_filter).values_list(relation_field, flat=True)
+
+    return Object_class.objects.filter(id__in=ids, dropped_at=None).count()
 
 
 class OrganizationSerializers:
@@ -85,16 +96,17 @@ class OrganizationSerializers:
                                         dropped_at=None).count()
 
         def get_employees_count(self, obj):
-            return Employee2Organization.objects.filter(organization_id=obj.id,
-                                                        dropped_at=None).count()
+            return _get_related_entities_count(Employee2Organization, {'organization_id': obj.id},
+                                               Employee, 'employee')
 
         def get_devices_count(self, obj):
-            return Device2Organization.objects.filter(organization_id=obj.id,
-                                                      dropped_at=None).count()
+            return _get_related_entities_count(Device2Organization, {'organization_id': obj.id},
+                                               Device, 'device')
 
         def get_device_groups_count(self, obj):
-            return DeviceGroup2Organization.objects.filter(organization_id=obj.id,
-                                                           dropped_at=None).count()
+            return _get_related_entities_count(DeviceGroup2Organization,
+                                               {'organization_id': obj.id}, DeviceGroup,
+                                               'device_group')
 
         class Meta:
             model = Organization
@@ -165,14 +177,15 @@ class DepartmentSerializers:
 
         def get_employees_count(self, obj):
             queryset = Employee2Department.objects.filter(
-                department=obj, dropped_at=None)
+                department=obj, employee__dropped_at=None, dropped_at=None)
 
             if 'organization' in self.context:
                 organization = self.context['organization']
                 if organization is not None:
                     queryset = queryset.filter(
                         employee_id__in=Employee2Organization.objects
-                        .filter(organization_id=organization).values_list('employee', flat=True))
+                        .filter(organization_id=organization, dropped_at=None)
+                        .values_list('employee', flat=True))
 
             return queryset.count()
 
@@ -227,11 +240,12 @@ class EmployeeSerializers():
         departments_count = serializers.SerializerMethodField()
 
         def get_organizations_count(self, obj):
-            return Employee2Organization.objects.filter(employee_id=obj.id, dropped_at=None).count()
+            return _get_related_entities_count(Employee2Organization, {'employee_id': obj.id},
+                                               Organization, 'organization')
 
         def get_departments_count(self, obj):
             queryset = Employee2Department.objects.filter(
-                employee_id=obj.id, dropped_at=None)
+                employee_id=obj.id, department__dropped_at=None, dropped_at=None)
 
             if 'organization' in self.context:
                 organization = self.context['organization']
@@ -400,8 +414,9 @@ class DeviceGroupSerializers:
             return queryset.count()
 
         def get_organizations_count(self, obj):
-            return DeviceGroup2Organization.objects.filter(device_group_id=obj.id,
-                                                           dropped_at=None).count()
+            return _get_related_entities_count(DeviceGroup2Organization,
+                                               {'device_group_id': obj.id}, Organization,
+                                               'organization')
 
         class Meta:
             model = DeviceGroup
@@ -478,7 +493,9 @@ class DeviceSerializers:
             return None if obj.timezone is None else date_utils.duration_UTC_to_str(obj.timezone)
 
         def get_organizations_count(self, obj):
-            return Device2Organization.objects.filter(device_id=obj.id, dropped_at=None).count()
+            return _get_related_entities_count(Device2Organization,
+                                               {'device_id': obj.id}, Organization,
+                                               'organization')
 
         class Meta:
             model = Device
