@@ -14,10 +14,11 @@ from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from idenick_app.models import (
-    AbstractEntry, Department, Device,
-    Device2Organization, DeviceGroup, DeviceGroup2Organization, Employee,
-    Employee2Department, Employee2Organization, Login, Organization)
+from idenick_app.models import (AbstractEntry, Department, Device,
+                                Device2Organization, DeviceGroup,
+                                DeviceGroup2Organization, Employee,
+                                Employee2Department, Employee2Organization,
+                                Login, Organization)
 from idenick_rest_api_v0.classes.utils import (login_utils, relation_utils,
                                                report_utils, request_utils,
                                                utils)
@@ -41,12 +42,14 @@ class _AbstractViewSet(viewsets.ViewSet):
     _serializer_classes: Dict[str, serializers.ModelSerializer] = None
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
+        # TODO: описание base_filter
         pass
 
     def _delete_or_restore(self, request, entity: AbstractEntry,
                            return_entity: Optional[AbstractEntry] = None):
         info = _DeleteRestoreStatusChecker(
-            entity=entity, delete_mode=('delete' in request.data))
+            entity=entity, delete_mode=('delete' in request.data),
+            anyTimeRestore=('anyTime' in request.data))
         if (info.status is _DeleteRestoreCheckStatus.DELETABLE) \
                 or (info.status is _DeleteRestoreCheckStatus.RESTORABLE):
             info.entity.save()
@@ -107,7 +110,7 @@ class _AbstractViewSet(viewsets.ViewSet):
         serializer = self.get_serializer_class()(_queryset, many=True, context={
             'organization': organization})
 
-        return {'data': serializer.data, 'count': self._get_queryset(request, True).count()}
+        return {'data': serializer.data, 'count': self._get_queryset(request, base_filter=True).count()}
 
     def _retrieve(self, request, pk=None, queryset=None):
         return request_utils.response(self._retrieve_data(request, pk, queryset))
@@ -201,7 +204,9 @@ class _DeleteRestoreCheckStatus(Enum):
 class _DeleteRestoreStatusChecker:
     """info about delete/restore entity"""
 
-    def __init__(self, entity: AbstractEntry, delete_mode: Optional[bool] = True):
+    def __init__(self, entity: AbstractEntry,
+                 delete_mode: Optional[bool] = True,
+                 anyTimeRestore: Optional[bool] = False):
         status = None
         if delete_mode:
             if entity.dropped_at is None:
@@ -210,7 +215,9 @@ class _DeleteRestoreStatusChecker:
             else:
                 status = _DeleteRestoreCheckStatus.ALREADY_DELETED
         elif entity.dropped_at is not None:
-            if (datetime.now() - entity.dropped_at.replace(tzinfo=None)) < timedelta(minutes=5):
+            if (anyTimeRestore or
+                    (datetime.now() - entity.dropped_at.replace(tzinfo=None))
+                    < timedelta(minutes=5)):
                 entity.dropped_at = None
                 status = _DeleteRestoreCheckStatus.RESTORABLE
             else:
@@ -220,6 +227,26 @@ class _DeleteRestoreStatusChecker:
 
         self.status = status
         self.entity = entity
+
+
+class _DeletedFilter(Enum):
+    NON_DELETED = 'not deleted'
+    DELETED_ONLY = 'deleted only'
+    ALL = 'deleted and exists'
+
+
+def get_deleted_filter(request, base_filter: bool, with_dropped: bool) -> _DeletedFilter:
+    dropped_filter = None
+    if base_filter:
+        dropped_filter = _DeletedFilter.NON_DELETED.value
+    elif with_dropped:
+        dropped_filter = _DeletedFilter.ALL.value
+    elif request_utils.get_request_param(request, 'deletedOnly') is not None:
+        dropped_filter = _DeletedFilter.DELETED_ONLY.value
+    else:
+        dropped_filter = _DeletedFilter.NON_DELETED.value
+
+    return dropped_filter
 
 
 class OrganizationViewSet(_AbstractViewSet):
@@ -232,8 +259,12 @@ class OrganizationViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Organization.objects.all()
-        if not with_dropped:
+
+        dropped_filter = get_deleted_filter(request, base_filter, with_dropped)
+        if dropped_filter is _DeletedFilter.NON_DELETED.value:
             queryset = queryset.filter(dropped_at=None)
+        elif dropped_filter is _DeletedFilter.DELETED_ONLY.value:
+            queryset = queryset.exclude(dropped_at=None)
 
         if not base_filter:
             name_filter = request_utils.get_request_param(request, 'name')
@@ -340,11 +371,15 @@ class DepartmentViewSet(_AbstractViewSet):
     }
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
-        login = login_utils.get_login(request.user)
         queryset = Department.objects.all()
-        if not with_dropped:
-            queryset = queryset.filter(dropped_at=None)
 
+        dropped_filter = get_deleted_filter(request, base_filter, with_dropped)
+        if dropped_filter is _DeletedFilter.NON_DELETED.value:
+            queryset = queryset.filter(dropped_at=None)
+        elif dropped_filter is _DeletedFilter.DELETED_ONLY.value:
+            queryset = queryset.exclude(dropped_at=None)
+
+        login = login_utils.get_login(request.user)
         role = login.role
         if (role == Login.CONTROLLER) or (role == Login.REGISTRATOR):
             queryset = queryset.filter(
@@ -365,9 +400,7 @@ class DepartmentViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.CONTROLLER)
     def list(self, request):
-        queryset = self._get_queryset(request)
-
-        result = self._list_data(request, queryset)
+        result = self._list_data(request)
 
         if 'full' in request.GET:
             organizations_ids = set(
@@ -469,19 +502,20 @@ class EmployeeViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Employee.objects.all()
-        if not with_dropped:
+
+        dropped_filter = get_deleted_filter(request, base_filter, with_dropped)
+        if dropped_filter is _DeletedFilter.NON_DELETED.value:
             queryset = queryset.filter(dropped_at=None)
+        elif dropped_filter is _DeletedFilter.DELETED_ONLY.value:
+            queryset = queryset.exclude(dropped_at=None)
 
         login = login_utils.get_login(request.user)
-
-        organization_filter = {'id': None, 'with_dropped': False}
+        organization_filter = None
         if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
-            organization_filter.update(id=login.organization_id)
-            if with_dropped:
-                organization_filter.update(with_dropped=True)
+            organization_filter = login.organization_id
         elif login.role == Login.ADMIN:
-            organization_filter.update(id=request_utils.get_request_param(
-                request, 'organization', True, base_filter=base_filter))
+            organization_filter = request_utils.get_request_param(
+                request, 'organization', True, base_filter=base_filter)
 
         if not base_filter:
             name_filter = request_utils.get_request_param(request, 'name')
@@ -501,25 +535,26 @@ class EmployeeViewSet(_AbstractViewSet):
                 id__in=Employee2Department.objects.filter(
                     department_id=department_filter).values_list('employee', flat=True))
 
-        if organization_filter.get('id') is not None:
+        if organization_filter is not None:
             employee_id_list = queryset.values_list('id', flat=True)
-            filter_props = {
-                'organization_id': organization_filter.get('id'),
-                'employee_id__in': employee_id_list
-            }
-            if not organization_filter.get('with_dropped'):
-                filter_props.update(dropped_at=None)
+            employees_queryset = Employee2Organization.objects.filter(
+                organization_id=organization_filter, employee_id__in=employee_id_list)
 
-            queryset = queryset.filter(id__in=Employee2Organization.objects.filter(**filter_props)
-                                       .values_list('employee', flat=True))
+            if (login.role == Login.ADMIN) \
+                    or (dropped_filter is _DeletedFilter.NON_DELETED.value):
+                employees_queryset = employees_queryset.filter(dropped_at=None)
+            elif dropped_filter is _DeletedFilter.DELETED_ONLY.value:
+                employees_queryset = employees_queryset.exclude(
+                    dropped_at=None)
+
+            queryset = queryset.filter(
+                id__in=employees_queryset.values_list('employee', flat=True))
 
         return queryset
 
     @login_utils.login_check_decorator()
     def list(self, request):
-        queryset = self._get_queryset(request)
-
-        result = self._list_data(request, queryset)
+        result = self._list_data(request)
 
         return request_utils.response(result)
 
@@ -637,8 +672,11 @@ class _UserViewSet(_AbstractViewSet):
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Login.objects.filter(
             role=self._user_role(request))
-        if not with_dropped:
+        dropped_filter = get_deleted_filter(request, base_filter, with_dropped)
+        if dropped_filter is _DeletedFilter.NON_DELETED.value:
             queryset = queryset.filter(dropped_at=None)
+        elif dropped_filter is _DeletedFilter.DELETED_ONLY.value:
+            queryset = queryset.exclude(dropped_at=None)
 
         if not base_filter:
             name_filter = request_utils.get_request_param(request, 'name')
@@ -663,9 +701,7 @@ class _UserViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def list(self, request):
-        queryset = self._get_queryset(request)
-
-        result = self._list_data(request, queryset)
+        result = self._list_data(request)
 
         if 'full' in request.GET:
             organizations_ids = set(
@@ -789,19 +825,23 @@ class DeviceViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Device.objects.all()
-        if not with_dropped:
+
+        dropped_filter = get_deleted_filter(request, base_filter, with_dropped)
+        if dropped_filter is _DeletedFilter.NON_DELETED.value:
             queryset = queryset.filter(dropped_at=None)
+        elif dropped_filter is _DeletedFilter.DELETED_ONLY.value:
+            queryset = queryset.exclude(dropped_at=None)
 
         login = login_utils.get_login(request.user)
 
-        organization_filter = {'id': None, 'with_dropped': False}
+        organization_filter = None
         if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
-            organization_filter.update(id=login.organization_id)
+            organization_filter = login.organization_id
             if with_dropped:
                 organization_filter.update(with_dropped=True)
         elif login.role == Login.ADMIN:
-            organization_filter.update(id=request_utils.get_request_param(
-                request, 'organization', True, base_filter=base_filter))
+            organization_filter = request_utils.get_request_param(
+                request, 'organization', True, base_filter=base_filter)
 
         if not base_filter:
             name_filter = request_utils.get_request_param(request, 'name')
@@ -813,25 +853,25 @@ class DeviceViewSet(_AbstractViewSet):
         if device_group_filter is not None:
             queryset = queryset.filter(device_group_id=device_group_filter)
 
-        if organization_filter.get('id') is not None:
+        if organization_filter is not None:
             device_id_list = queryset.values_list('id', flat=True)
-            filter_props = {
-                'organization_id': organization_filter.get('id'),
-                'device_id__in': device_id_list
-            }
-            if not organization_filter.get('with_dropped'):
-                filter_props.update(dropped_at=None)
+            devices_queryset = Device2Organization.objects.filter(
+                organization_id=organization_filter, device_id__in=device_id_list)
 
-            queryset = queryset.filter(id__in=Device2Organization.objects.filter(**filter_props)
-                                       .values_list('device_id', flat=True))
+            if (login.role == Login.ADMIN) \
+                    or (dropped_filter is _DeletedFilter.NON_DELETED.value):
+                devices_queryset = devices_queryset.filter(dropped_at=None)
+            elif dropped_filter is _DeletedFilter.DELETED_ONLY.value:
+                devices_queryset = devices_queryset.exclude(dropped_at=None)
+
+            queryset = queryset.filter(
+                id__in=devices_queryset.values_list('device_id', flat=True))
 
         return queryset
 
     @login_utils.login_check_decorator()
     def list(self, request):
-        queryset = self._get_queryset(request)
-
-        result = self._list_data(request, queryset)
+        result = self._list_data(request)
 
         return request_utils.response(result)
 
@@ -954,8 +994,12 @@ class DeviceGroupViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = DeviceGroup.objects.all()
-        if not with_dropped:
+
+        dropped_filter = get_deleted_filter(request, base_filter, with_dropped)
+        if dropped_filter is _DeletedFilter.NON_DELETED.value:
             queryset = queryset.filter(dropped_at=None)
+        elif dropped_filter is _DeletedFilter.DELETED_ONLY.value:
+            queryset = queryset.exclude(dropped_at=None)
 
         login = login_utils.get_login(request.user)
 
@@ -972,18 +1016,23 @@ class DeviceGroupViewSet(_AbstractViewSet):
                 request, 'organization', True, base_filter=base_filter)
         if organization_filter is not None:
             group_id_list = queryset.values_list('id', flat=True)
-            queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
-                device_group_id__in=group_id_list,
-                organization_id=organization_filter,
-                dropped_at=None).values_list('device_group_id', flat=True))
+            groups_queryset = DeviceGroup2Organization.objects.filter(
+                organization_id=organization_filter, device_group_id__in=group_id_list)
+
+            if (login.role == Login.ADMIN) \
+                    or (dropped_filter is _DeletedFilter.NON_DELETED.value):
+                groups_queryset = groups_queryset.filter(dropped_at=None)
+            elif dropped_filter is _DeletedFilter.DELETED_ONLY.value:
+                groups_queryset = groups_queryset.exclude(dropped_at=None)
+
+            queryset = queryset.filter(
+                id__in=groups_queryset.values_list('device_group_id', flat=True))
 
         return queryset
 
     @login_utils.login_check_decorator()
     def list(self, request):
-        queryset = self._get_queryset(request)
-
-        result = self._list_data(request, queryset)
+        result = self._list_data(request)
 
         return request_utils.response(result)
 
