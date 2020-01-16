@@ -124,18 +124,18 @@ def _get_report(request) -> _ReportQuerysetInfo:
             if (organization_filter is None) \
                     or DeviceGroup2Organization.objects.filter(device_group_id=entity_id) \
                 .filter(organization_id=organization_filter).exists():
-                devices = Device.objects.filter(
-                    device_group_id=entity_id).values_list('device_id', flat=True)
+                devices_ids = Device.objects.filter(
+                    device_group_id=entity_id).values_list('id', flat=True)
 
                 if organization_filter is not None:
                     devices_of_organization = Device2Organization.objects.filter(
                         organization_id=organization_filter).values_list('device_id', flat=True)
 
-                    devices = set(devices).intersection(
+                    devices_ids = set(devices_ids).intersection(
                         set(devices_of_organization))
 
                 report_queryset = report_queryset.filter(
-                    device_id__in=devices)
+                    device_id__in=devices_ids)
             else:
                 report_queryset = EmployeeRequest.objects.none()
 
