@@ -671,7 +671,7 @@ class _UserViewSet(_AbstractViewSet):
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Login.objects.filter(
-            role=self._user_role(request))
+            role=self._user_role(request)).exclude(user=None)
         dropped_filter = get_deleted_filter(request, base_filter, with_dropped)
         if dropped_filter is _DeletedFilter.NON_DELETED.value:
             queryset = queryset.filter(dropped_at=None)
@@ -697,7 +697,11 @@ class _UserViewSet(_AbstractViewSet):
         if organization_filter is not None:
             queryset = queryset.filter(organization__id=organization_filter)
 
-        return queryset
+        user_ids = queryset.values_list('user', flat=True)
+        exists_ids = User.objects.filter(
+            id__in=user_ids).values_list('id', flat=True)
+
+        return queryset.filter(id__in=exists_ids)
 
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def list(self, request):
