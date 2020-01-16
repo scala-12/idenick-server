@@ -1133,14 +1133,14 @@ def get_counts(request):
 
 
 @api_view(['GET'])
-@login_utils.login_check_decorator(Login.CONTROLLER, Login.ADMIN)
+@login_utils.login_check_decorator(Login.CONTROLLER, Login.REGISTRATOR, Login.ADMIN)
 def get_report_file(request):
     """report file"""
     return report_utils.get_report_file(request)
 
 
 @api_view(['GET'])
-@login_utils.login_check_decorator(Login.CONTROLLER, Login.ADMIN)
+@login_utils.login_check_decorator(Login.CONTROLLER, Login.REGISTRATOR, Login.ADMIN)
 def get_report(request):
     """return report"""
     return Response(vars(report_utils.get_report(request)))

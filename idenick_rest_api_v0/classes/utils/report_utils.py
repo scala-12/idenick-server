@@ -62,7 +62,7 @@ def _get_report(request) -> _ReportQuerysetInfo:
     report_queryset = EmployeeRequest.objects.all()
 
     login = login_utils.get_login(request.user)
-    if login.role == Login.CONTROLLER:
+    if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
         organization_filter = login.organization.id
     name = None
     if entity_id is not None:
