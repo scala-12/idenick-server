@@ -6,11 +6,11 @@ from typing import List, Optional, Set, Union
 from django.db.models.query_utils import Q
 from rest_framework import serializers
 
-from idenick_app.models import (AbstractSimpleEntry, Department, Device,
-                                Device2Organization, DeviceGroup,
-                                DeviceGroup2Organization, Employee,
-                                Employee2Department, Employee2Organization,
-                                Login, Organization)
+from idenick_app.models import (Department, Device, Device2Organization,
+                                DeviceGroup, DeviceGroup2Organization,
+                                Employee, Employee2Department,
+                                Employee2Organization, Login, Organization)
+from idenick_app.classes.utils.models_utils import AbstractSimpleEntry
 from idenick_rest_api_v0.classes.utils import login_utils
 from idenick_rest_api_v0.serializers import (DepartmentSerializers,
                                              DeviceGroupSerializers,

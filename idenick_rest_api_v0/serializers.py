@@ -6,11 +6,12 @@ from django.http.request import QueryDict
 from rest_framework import serializers
 
 from idenick_app.classes.utils import date_utils
-from idenick_app.models import (AbstractEntry, Department, Device,
+from idenick_app.models import (Department, Device,
                                 Device2Organization, DeviceGroup,
                                 DeviceGroup2Organization, Employee,
                                 Employee2Department, Employee2Organization,
                                 EmployeeRequest, Login, Organization)
+from idenick_app.classes.utils.models_utils import AbstractEntry
 
 
 class UserSerializer(serializers.ModelSerializer):

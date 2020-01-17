@@ -9,46 +9,11 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from idenick_app.classes.utils import date_utils
-
-DELETED_STATUS = 'удален'
-
-
-class AbstractSimpleEntry(models.Model):
-    id = models.AutoField(primary_key=True)
-    dropped_at = models.DateTimeField(
-        db_column='rdropped', null=True, blank=True)
-
-    def save(self, *args, **kwargs):
-        if not self.dropped_at:
-            self.dropped_at = None
-        super(AbstractSimpleEntry, self).save(*args, **kwargs)
-
-    class Meta:
-        abstract = True
-
-    def _str(self):
-        return 'id[%s] ' % (self.id)
-
-
-class AbstractEntry(AbstractSimpleEntry):
-    created_at = models.DateTimeField(db_column='rcreated', auto_now_add=True)
-
-    class Meta:
-        abstract = True
-        ordering = ["created_at"]
-
-
-class AbstractTimezonedEntry(AbstractEntry):
-    timezone = models.DurationField(default=None, null=True, blank=True,)
-
-    def save(self, *args, **kwargs):
-        if (self.timezone is not None) and ((self.timezone > datetime.timedelta(hours=14))
-                                            or (self.timezone < datetime.timedelta(hours=-12))):
-            self.timezone = None
-        super(AbstractTimezonedEntry, self).save(*args, **kwargs)
-
-    class Meta:
-        abstract = True
+from idenick_app.classes.utils.models_utils import (AbstractEntry,
+                                                    AbstractSimpleEntry,
+                                                    EntryWithTimezone,
+                                                    create_user_profile,
+                                                    save_user_profile)
 
 
 class Employee(AbstractEntry):
@@ -71,7 +36,7 @@ class Employee(AbstractEntry):
         db_table = 'users'
 
 
-class Organization(AbstractTimezonedEntry):
+class Organization(AbstractEntry, EntryWithTimezone):
     """Organization model"""
     guid = models.CharField(max_length=50, unique=True, db_column='companyid',
                             default=uuid.uuid4, editable=False)
@@ -79,6 +44,10 @@ class Organization(AbstractTimezonedEntry):
                             verbose_name='название')
     address = models.CharField(max_length=500, blank=True, null=True,)
     phone = models.CharField(max_length=50, blank=True, null=True,)
+
+    def save(self, *args, **kwargs):
+        super().save_timezone()
+        super(Organization, self).save(*args, **kwargs)
 
     def __str__(self):
         return self._str() + ('[%s] address[%s] phone[%s]' % (self.name, self.address, self.phone))
@@ -165,20 +134,7 @@ class Login(AbstractSimpleEntry):
                 + ' ' + self.user.last_name, self.get_role_display())
 
 
-@receiver(post_save, sender=User)
-def create_user_profile(sender, instance, created, **kwargs):
-    """create user info record"""
-    if created:
-        Login.objects.create(user=instance)
-
-
-@receiver(post_save, sender=User)
-def save_user_profile(sender, instance, **kwargs):
-    """create user info record"""
-    instance.login.save()
-
-
-class Device(AbstractTimezonedEntry):
+class Device(AbstractEntry, EntryWithTimezone):
     """Device model"""
     mqtt = models.CharField(max_length=255, db_column='mqttid', unique=True,)
     name = models.CharField(max_length=64, verbose_name='название')
@@ -188,6 +144,10 @@ class Device(AbstractTimezonedEntry):
     device_group = models.ForeignKey(
         'DeviceGroup', db_column='devicegroupsid', related_name='devices',
         on_delete=models.CASCADE, blank=True, null=True, default=None,)
+
+    def save(self, *args, **kwargs):
+        super().save_timezone()
+        super(Device, self).save(*args, **kwargs)
 
     def __str__(self):
         return self._str() + ('mqtt[%s] [%s] [%s] [%s] [%s] with config [%s]'
