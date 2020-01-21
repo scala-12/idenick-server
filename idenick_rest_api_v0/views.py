@@ -14,12 +14,11 @@ from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from idenick_app.models import (Department, Device,
-                                Device2Organization, DeviceGroup,
-                                DeviceGroup2Organization, Employee,
-                                Employee2Department, Employee2Organization,
-                                Login, Organization)
 from idenick_app.classes.utils.models_utils import AbstractEntry
+from idenick_app.models import (Department, Device, Device2Organization,
+                                DeviceGroup, DeviceGroup2Organization,
+                                Employee, Employee2Department,
+                                Employee2Organization, Login, Organization)
 from idenick_rest_api_v0.classes.utils import (login_utils, relation_utils,
                                                report_utils, request_utils,
                                                utils)
@@ -614,8 +613,6 @@ class EmployeeViewSet(_AbstractViewSet):
         else:
             serializer_class = self.get_serializer_class()
             serializer = serializer_class(data=request.data)
-            result = None
-            login = login_utils.get_login(request.user)
             if serializer.is_valid():
                 data = serializer.data
                 entity.last_name = data.get('last_name', entity.last_name)
@@ -623,7 +620,17 @@ class EmployeeViewSet(_AbstractViewSet):
                     'first_name', entity.first_name)
                 entity.patronymic = data.get(
                     'patronymic', entity.patronymic)
+
                 entity.save()
+
+                if login.role == Login.REGISTRATOR:
+                    organization_employee = Employee2Organization.objects.get(
+                        organization=login.organization.id, employee=entity.id)
+                    organization_employee.timesheet_start = request.data.get(
+                        'timesheet_start', None)
+                    organization_employee.timesheet_end = request.data.get(
+                        'timesheet_end', None)
+                    organization_employee.save()
 
                 result = self._response4update_n_create(data=entity)
 

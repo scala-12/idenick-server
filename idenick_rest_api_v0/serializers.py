@@ -243,6 +243,32 @@ class EmployeeSerializers():
 
         organizations_count = serializers.SerializerMethodField()
         departments_count = serializers.SerializerMethodField()
+        timesheet_start = serializers.SerializerMethodField()
+        timesheet_end = serializers.SerializerMethodField()
+
+        def get_timesheet_start(self, obj):
+            result = None
+            if self.context['organization'] is not None:
+                result = Employee2Organization.objects.get(
+                    organization=self.context['organization'], employee=obj.id).timesheet_start
+
+                if result is None:
+                    result = Organization.objects.get(
+                        id=self.context['organization']).timesheet_start
+
+            return result
+
+        def get_timesheet_end(self, obj):
+            result = None
+            if self.context['organization'] is not None:
+                result = Employee2Organization.objects.get(
+                    organization=self.context['organization'], employee=obj.id).timesheet_end
+
+                if result is None:
+                    result = Organization.objects.get(
+                        id=self.context['organization']).timesheet_end
+
+            return result
 
         def get_organizations_count(self, obj):
             return _get_related_entities_count(Employee2Organization, {'employee_id': obj.id},
@@ -271,6 +297,8 @@ class EmployeeSerializers():
                 'patronymic',
                 'organizations_count',
                 'departments_count',
+                'timesheet_start',
+                'timesheet_end',
             ]
 
 
