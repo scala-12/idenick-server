@@ -5,25 +5,42 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 
-def duration_UTC_to_str(duration: timedelta) -> str:
-    """duration to UTC string"""
+def duration_to_str(duration: timedelta, show_positive_symbol: Optional[bool] = True) -> str:
+    """duration to UTC string; min -99:59, max 99:59, else None"""
     seconds = duration.total_seconds()
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
+    hours = abs(int(seconds // 3600))
+    minutes = abs(int((seconds % 3600) // 60))
 
-    result = '00:00' if seconds == 0 else (('+' if seconds > 0 else '')
-                                           + ('00' if hours == 0 else str(hours))
-                                           + ':'
-                                           + ('0' if minutes < 10 else '') + str(minutes))
+    if seconds == 0:
+        result = '00:00'
+    elif hours < 99:
+        result = ''
+        if seconds > 0:
+            if show_positive_symbol:
+                result += '+'
+        else:
+            result += '-'
+
+        if hours == 0:
+            result += '00'
+        elif hours < 9:
+            result += '0'
+
+        result += str(hours) + ':'
+
+        if minutes < 10:
+            result += '0'
+
+        result += str(minutes)
 
     return result
 
 
-def str_to_duration_UTC(value: str) -> Optional[timedelta]:
+def str_to_duration(value: str) -> Optional[timedelta]:
     """UTC string to duration"""
     result = None
     time = value.replace('−', '-')
-    time_regexp = re.match(r'\s*([-+]?[01]?\d):([034][05])\s*$', time)
+    time_regexp = re.match(r'\s*([-+]?\d?\d):([0-5]\d)\s*$', time)
     if time_regexp is not None:
         hours = int(time_regexp.group(1).replace('+', ''))
         minutes = int(time_regexp.group(2)) * (-1 if hours < 0 else 1)
@@ -49,6 +66,7 @@ class DateInfo:
         self.day = day
         self.month = month
         self.time = time
+
 
 UTC = [
     '+14:00',

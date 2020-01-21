@@ -349,7 +349,7 @@ class EmployeeRequest(models.Model):
     def get_date_info(self) -> date_utils.DateInfo:
         utc = None
         if (self.device is not None) and (self.device.timezone is not None):
-            utc = date_utils.duration_UTC_to_str(self.device.timezone)
+            utc = date_utils.duration_to_str(self.device.timezone)
 
         return date_utils.DateInfo(self.related_moment, utc)
 

@@ -27,10 +27,10 @@ class UserSerializer(serializers.ModelSerializer):
 
 class _TimeValueField(serializers.Field):
     def to_representation(self, value):
-        return value if isinstance(value, timedelta) else date_utils.str_to_duration_UTC(value)
+        return value if isinstance(value, timedelta) else date_utils.str_to_duration(value)
 
     def to_internal_value(self, data):
-        return data if isinstance(data, timedelta) else date_utils.str_to_duration_UTC(data)
+        return data if isinstance(data, timedelta) else date_utils.str_to_duration(data)
 
 
 class _DateInfoSerializer(serializers.ModelSerializer):
@@ -83,7 +83,7 @@ class OrganizationSerializers:
         timezone = serializers.SerializerMethodField()
 
         def get_timezone(self, obj):
-            return None if obj.timezone is None else date_utils.duration_UTC_to_str(obj.timezone)
+            return None if obj.timezone is None else date_utils.duration_to_str(obj.timezone)
 
         def get_departments_count(self, obj):
             return Department.objects.filter(organization=obj, dropped_at=None).count()
@@ -491,7 +491,7 @@ class DeviceSerializers:
         device_group = serializers.PrimaryKeyRelatedField(read_only=True)
 
         def get_timezone(self, obj):
-            return None if obj.timezone is None else date_utils.duration_UTC_to_str(obj.timezone)
+            return None if obj.timezone is None else date_utils.duration_to_str(obj.timezone)
 
         def get_organizations_count(self, obj):
             return _get_related_entities_count(Device2Organization,
