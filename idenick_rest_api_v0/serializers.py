@@ -248,7 +248,7 @@ class EmployeeSerializers():
 
         def get_timesheet_start(self, obj):
             result = None
-            if self.context['organization'] is not None:
+            if 'organization' in self.context:
                 result = Employee2Organization.objects.get(
                     organization=self.context['organization'], employee=obj.id).timesheet_start
 
@@ -260,7 +260,7 @@ class EmployeeSerializers():
 
         def get_timesheet_end(self, obj):
             result = None
-            if self.context['organization'] is not None:
+            if 'organization' in self.context:
                 result = Employee2Organization.objects.get(
                     organization=self.context['organization'], employee=obj.id).timesheet_end
 
