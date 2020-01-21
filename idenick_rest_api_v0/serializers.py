@@ -68,6 +68,8 @@ class OrganizationSerializers:
             fields = [
                 'name',
                 'timezone',
+                'timesheet_start',
+                'timesheet_end',
                 'address',
                 'phone',
             ]
@@ -125,6 +127,8 @@ class OrganizationSerializers:
                 'devices_count',
                 'device_groups_count',
                 'timezone',
+                'timesheet_start',
+                'timesheet_end',
             ]
 
 

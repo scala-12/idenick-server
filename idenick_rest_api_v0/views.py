@@ -348,6 +348,8 @@ class OrganizationViewSet(_AbstractViewSet):
                 entity.address = update.address
                 entity.phone = update.phone
                 entity.timezone = update.timezone
+                entity.timesheet_start = update.timesheet_start
+                entity.timesheet_end = update.timesheet_end
                 entity.save()
                 result = self._response4update_n_create(data=entity)
             else:

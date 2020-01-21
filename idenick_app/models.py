@@ -11,6 +11,7 @@ from django.dispatch import receiver
 from idenick_app.classes.utils import date_utils
 from idenick_app.classes.utils.models_utils import (AbstractEntry,
                                                     AbstractSimpleEntry,
+                                                    EntryWithTimesheet,
                                                     EntryWithTimezone,
                                                     create_user_profile,
                                                     save_user_profile)
@@ -36,7 +37,7 @@ class Employee(AbstractEntry):
         db_table = 'users'
 
 
-class Organization(AbstractEntry, EntryWithTimezone):
+class Organization(AbstractEntry, EntryWithTimezone, EntryWithTimesheet):
     """Organization model"""
     guid = models.CharField(max_length=50, unique=True, db_column='companyid',
                             default=uuid.uuid4, editable=False)
@@ -47,6 +48,7 @@ class Organization(AbstractEntry, EntryWithTimezone):
 
     def save(self, *args, **kwargs):
         super().save_timezone()
+        super().save_timesheet()
         super(Organization, self).save(*args, **kwargs)
 
     def __str__(self):
@@ -197,12 +199,16 @@ class DeviceGroup2Organization(AbstractEntry):
         unique_together = (('device_group', 'organization'),)
 
 
-class Employee2Organization(AbstractEntry):
+class Employee2Organization(AbstractEntry, EntryWithTimesheet):
     """Model of relation between employee and organization"""
     employee = models.ForeignKey(
         'Employee', db_column='usersid', related_name='organizations', on_delete=models.CASCADE)
     organization = models.ForeignKey(
         'Organization', db_column='companyid', related_name='employees', on_delete=models.CASCADE)
+
+    def save(self, *args, **kwargs):
+        super().save_timesheet()
+        super(Employee2Organization, self).save(*args, **kwargs)
 
     def __str__(self):
         return self._str() + ('[%s] in [%s]' % (self.employee, self.organization))

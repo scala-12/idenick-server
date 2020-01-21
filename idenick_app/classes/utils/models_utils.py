@@ -50,6 +50,32 @@ class EntryWithTimezone(models.Model):
         abstract = True
 
 
+class EntryWithTimesheet(models.Model):
+    timesheet_start = models.CharField(max_length=5,
+                                       default=None, null=True, blank=True,)
+    timesheet_end = models.CharField(max_length=5,
+                                     default=None, null=True, blank=True,)
+
+    def save_timesheet(self, *args, **kwargs):
+        do_save = True
+        if (self.timesheet_start is None) or (self.timesheet_end is None):
+            do_save = False
+        else:
+            start = date_utils.str_to_duration(self.timesheet_start)
+            end = None if start is None else date_utils.str_to_duration(
+                self.timesheet_end)
+            if (end is None) or (start > end) or (start < datetime.timedelta()) \
+                    or (end > datetime.timedelta(hours=23, minutes=59)):
+                do_save = False
+
+        if not do_save:
+            self.timesheet_start = None
+            self.timesheet_end = None
+
+    class Meta:
+        abstract = True
+
+
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
     """create user info record"""
