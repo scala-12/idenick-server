@@ -33,8 +33,14 @@ class _ReportType(Enum):
 
 @dataclass
 class _ReportQuerysetInfo:
-    def __init__(self, queryset, name: str, count: int):
+    def __init__(self, queryset,
+                 name: str,
+                 count: int,
+                 organization: Optional[Organization] = None,
+                 department: Optional[Department] = None):
         self.queryset = queryset
+        self.organization = organization
+        self.department = department
         self.name = name
         self.count = count
 
@@ -61,9 +67,12 @@ def _get_report(request) -> _ReportQuerysetInfo:
 
     report_queryset = EmployeeRequest.objects.all()
 
+    organization = None
+    department = None
     login = login_utils.get_login(request.user)
     if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
         organization_filter = login.organization.id
+        organization = organization_filter
     name = None
     if entity_id is not None:
         if entity_type == _ReportType.EMPLOYEE:
@@ -79,14 +88,22 @@ def _get_report(request) -> _ReportQuerysetInfo:
         elif entity_type == _ReportType.DEPARTMENT:
             name = 'department '
 
-            employees = Employee.objects.filter(id__in=Employee2Department.objects.filter(
-                department_id=entity_id).values_list('employee_id', flat=True))
+            department = Department.objects.get(id=entity_id)
+
+            department_employees = Employee2Department.objects.filter(
+                department_id=entity_id)
+            if (organization is None) and department_employees.exists():
+                organization = department_employees.first().department.organization
+
+            employees = Employee.objects.filter(
+                id__in=department_employees.values_list('employee_id', flat=True))
             report_queryset = report_queryset.filter(
                 employee__in=employees)
         elif entity_type == _ReportType.ORGANIZATION:
             name = 'organization '
 
             if (organization_filter is None) or (organization_filter == entity_id):
+                organization = entity_id
                 employees = Employee2Organization.objects.filter(
                     organization_id=entity_id).values_list('employee_id', flat=True)
                 devices_of_organization = Device2Organization.objects.filter(
@@ -159,7 +176,10 @@ def _get_report(request) -> _ReportQuerysetInfo:
         paginated_report_queryset = report_queryset[offset:limit]
 
     return _ReportQuerysetInfo(queryset=paginated_report_queryset,
-                               name=name, count=report_queryset.count())
+                               name=name, count=report_queryset.count(),
+                               organization=None if organization is None
+                               else Organization.objects.get(id=organization),
+                               department=department,)
 
 
 class _HeaderName(Enum):
@@ -191,35 +211,41 @@ class _HeaderInfo:
         self.sub = sub
 
 
-def _get_department(line) -> Optional[Department]:
+def _get_department(line, organization: Optional[Organization] = None) -> Optional[Department]:
     """return department from report line"""
     department = None
     employee = line.get('employee')
     if employee is None:
-        return department
+        return None
 
-    employee_organizations = set(Employee2Organization.objects.filter(
-        employee=employee).values_list('organization_id', flat=True))
-    if not employee_organizations:
-        return department
-
-    device = line.get('device')
-    if device is not None:
-        device_organizations = set(Device2Organization.objects.filter(
-            device=device).values_list('organization_id', flat=True))
-        employee_organizations = employee_organizations.intersection(
-            device_organizations)
+    organizations = None
+    if organization is None:
+        employee_organizations = set(Employee2Organization.objects.filter(
+            employee=employee).values_list('organization_id', flat=True))
         if not employee_organizations:
-            return department
+            return None
+
+        device = line.get('device')
+        if device is not None:
+            device_organizations = set(Device2Organization.objects.filter(
+                device=device).values_list('organization_id', flat=True))
+            employee_organizations = employee_organizations.intersection(
+                device_organizations)
+            if not employee_organizations:
+                return None
+
+        organizations = Organization.objects.filter(
+            id__in=employee_organizations)
+    else:
+        organizations = [organization]
 
     employee_departments = Employee2Department.objects.filter(
         employee=employee).values_list('department_id', flat=True)
     if not employee_departments.exists():
-        return department
+        return None
 
-    organizations = Organization.objects.filter(id__in=employee_organizations)
     if not organizations:
-        return department
+        return None
     departments = Department.objects.filter(
         id__in=employee_departments, organization_id__in=organizations, show_in_report=True)
 
@@ -287,7 +313,12 @@ class _ReportFileWriter:
         if self._columns_size.get(column) < len(value):
             self._columns_size.update({column: len(value)})
 
-    def write_lines(self, queryset):
+    def write_lines(self,
+                    queryset,
+                    organization: Optional[Organization] = None,
+                    department: Optional[Department] = None):
+        get_department = (lambda line: _get_department(line, organization)) if department is None \
+            else lambda _line: department
         for line in EmployeeRequestSerializers.HumanReadableSerializer(queryset, many=True).data:
             if line.get('employee_name') is None:
                 line.update(employee_name=_ReportFileWriter._NOT_FOUNDED)
@@ -312,7 +343,7 @@ class _ReportFileWriter:
             self._write_cell(self._row, _HeaderName.TIMESHEET_ID, 'нет в базе')
             self._write_cell(self._row, _HeaderName.POSITION, 'нет в базе')
 
-            department = _get_department(line)
+            department = get_department(line)
             self._write_cell(self._row, _HeaderName.DEPARTMENT,
                              '-' if department is None else department.name)
 
@@ -355,7 +386,9 @@ def get_report_file(request) -> FileResponse:
     report_data = _get_report(request)
 
     writer = _ReportFileWriter()
-    writer.write_lines(report_data.queryset)
+    writer.write_lines(queryset=report_data.queryset,
+                       organization=report_data.organization,
+                       department=report_data.department)
     response = writer.close(report_data.name)
 
     return response
