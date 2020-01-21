@@ -195,6 +195,9 @@ class _HeaderName(Enum):
     FACT_TIME_START = 'Приход'
     FACT_TIME_END = 'Уход'
     FACT_TIME_SUM = 'Прод.'
+    PLAN_TIME_START = 'Приход'
+    PLAN_TIME_END = 'Уход'
+    PLAN_TIME_SUM = 'Прод.'
 
 
 @dataclass
@@ -275,6 +278,11 @@ class _ReportFileWriter:
             _SubHeaderInfo(_HeaderName.FACT_TIME_END),
             _SubHeaderInfo(_HeaderName.FACT_TIME_SUM),
         ]),
+        _HeaderInfo('План', [
+            _SubHeaderInfo(_HeaderName.PLAN_TIME_START),
+            _SubHeaderInfo(_HeaderName.PLAN_TIME_END),
+            _SubHeaderInfo(_HeaderName.PLAN_TIME_SUM),
+        ]),
     ]
     _NOT_FOUNDED = 'Не определен'
     LAST_HEADER_ROW_INDEX = 1
@@ -350,6 +358,48 @@ class _ReportFileWriter:
             self._write_cell(self._row, _HeaderName.FACT_TIME_START, '-')
             self._write_cell(self._row, _HeaderName.FACT_TIME_END, '-')
             self._write_cell(self._row, _HeaderName.FACT_TIME_SUM, '-')
+
+            plan_start = None
+            plan_end = None
+            if organization is None:
+                plan_start = 'Организация не выбрана'
+                plan_end = 'Организация не выбрана'
+            else:
+                employee: Optional[int] = line.get('employee')
+                if employee is None:
+                    plan_start = 'Сотрудник не определен'
+                    plan_end = 'Сотрудник не определен'
+                else:
+                    organization_employee = Employee2Organization.objects.get(
+                        employee=employee, organization=organization.id)
+                    if (organization_employee.timesheet_start is None) \
+                            or (organization_employee.timesheet_start is None):
+                        if (organization.timesheet_start is None) \
+                                or (organization.timesheet_start is None):
+                            plan_start = 'Не задано'
+                            plan_end = 'Не задано'
+                        else:
+                            plan_start = organization.timesheet_start
+                            plan_end = organization.timesheet_end
+                    else:
+                        plan_start = organization_employee.timesheet_start
+                        plan_end = organization_employee.timesheet_end
+
+            self._write_cell(
+                self._row, _HeaderName.PLAN_TIME_START, plan_start)
+            self._write_cell(self._row, _HeaderName.PLAN_TIME_END, plan_end)
+
+            _plan_start = date_utils.str_to_duration(plan_start)
+            _plan_end = None if _plan_start is None else date_utils.str_to_duration(
+                plan_end)
+            plan_count = None
+            if _plan_end is not None:
+                plan_count = date_utils.duration_to_str(
+                    _plan_end - _plan_start, show_positive_symbol=False)
+            else:
+                plan_count = '-'
+
+            self._write_cell(self._row, _HeaderName.PLAN_TIME_SUM, plan_count)
 
             self._row += 1
 
