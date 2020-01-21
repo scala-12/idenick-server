@@ -25,7 +25,7 @@ class UserSerializer(serializers.ModelSerializer):
         ]
 
 
-class _TimezoneField(serializers.Field):
+class _TimeValueField(serializers.Field):
     def to_representation(self, value):
         return value if isinstance(value, timedelta) else date_utils.str_to_duration_UTC(value)
 
@@ -61,7 +61,7 @@ class OrganizationSerializers:
     """Serializers for organization-model"""
     class CreateSerializer(serializers.ModelSerializer):
         """Serializer for create organization-model"""
-        timezone = _TimezoneField()
+        timezone = _TimeValueField()
 
         class Meta:
             model = Organization
@@ -437,7 +437,7 @@ class DeviceSerializers:
     """Serializers for device-model"""
     class CreateSerializer(serializers.ModelSerializer):
         """Serializer for create device-model"""
-        timezone = _TimezoneField()
+        timezone = _TimeValueField()
         device_group = serializers.SerializerMethodField()
 
         def get_device_group(self, obj):
@@ -462,7 +462,7 @@ class DeviceSerializers:
 
     class UpdateSerializer(serializers.ModelSerializer):
         """Serializer for update device-model"""
-        timezone = _TimezoneField()
+        timezone = _TimeValueField()
         device_group = serializers.SerializerMethodField()
 
         def get_device_group(self, obj):

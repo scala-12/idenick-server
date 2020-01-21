@@ -23,10 +23,10 @@ def str_to_duration_UTC(value: str) -> Optional[timedelta]:
     """UTC string to duration"""
     result = None
     time = value.replace('−', '-')
-    timezone = re.match(r'\s*([-+]?[01]?\d):([034][05])\s*$', time)
-    if timezone is not None:
-        hours = int(timezone.group(1).replace('+', ''))
-        minutes = int(timezone.group(2)) * (-1 if hours < 0 else 1)
+    time_regexp = re.match(r'\s*([-+]?[01]?\d):([034][05])\s*$', time)
+    if time_regexp is not None:
+        hours = int(time_regexp.group(1).replace('+', ''))
+        minutes = int(time_regexp.group(2)) * (-1 if hours < 0 else 1)
         result = timedelta(hours=hours, minutes=minutes)
 
     return result
