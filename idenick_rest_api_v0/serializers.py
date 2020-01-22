@@ -249,24 +249,34 @@ class EmployeeSerializers():
         def get_timesheet_start(self, obj):
             result = None
             if 'organization' in self.context:
-                result = Employee2Organization.objects.get(
-                    organization=self.context['organization'], employee=obj.id).timesheet_start
+                organization_id = self.context['organization']
+                if organization_id is not None:
+                    relations = Employee2Organization.objects.filter(
+                        organization=organization_id, employee=obj.id)
 
-                if result is None:
-                    result = Organization.objects.get(
-                        id=self.context['organization']).timesheet_start
+                    if relations.exists():
+                        result = relations.first().timesheet_start
+
+                    if result is None:
+                        result = Organization.objects.get(
+                            id=organization_id).timesheet_start
 
             return result
 
         def get_timesheet_end(self, obj):
             result = None
             if 'organization' in self.context:
-                result = Employee2Organization.objects.get(
-                    organization=self.context['organization'], employee=obj.id).timesheet_end
+                organization_id = self.context['organization']
+                if organization_id is not None:
+                    relations = Employee2Organization.objects.filter(
+                        organization=organization_id, employee=obj.id)
 
-                if result is None:
-                    result = Organization.objects.get(
-                        id=self.context['organization']).timesheet_end
+                    if relations.exists():
+                        result = relations.first().timesheet_end
+
+                    if result is None:
+                        result = Organization.objects.get(
+                            id=organization_id).timesheet_end
 
             return result
 
