@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
 
+DEFAULT_DATE_FORMAT = '%Y-%m-%d %H:%M:%S%z'
+
 
 def duration_to_str(duration: timedelta, show_positive_symbol: Optional[bool] = True) -> str:
     """duration to UTC string; min -99:59, max 99:59, else None"""
@@ -11,6 +13,7 @@ def duration_to_str(duration: timedelta, show_positive_symbol: Optional[bool] = 
     hours = abs(int(seconds // 3600))
     minutes = abs(int((seconds % 3600) // 60))
 
+    result = None
     if seconds == 0:
         result = '00:00'
     elif hours < 99:
@@ -21,9 +24,7 @@ def duration_to_str(duration: timedelta, show_positive_symbol: Optional[bool] = 
         else:
             result += '-'
 
-        if hours == 0:
-            result += '00'
-        elif hours < 9:
+        if  hours < 10:
             result += '0'
 
         result += str(hours) + ':'
