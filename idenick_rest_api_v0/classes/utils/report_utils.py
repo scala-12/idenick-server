@@ -192,12 +192,12 @@ class _HeaderName(Enum):
     TIMESHEET_ID = 'Табельный №'
     POSITION = 'Должность'
     DEPARTMENT = 'Подразделение'
-    FACT_TIME_START = 'Приход'
-    FACT_TIME_END = 'Уход'
-    FACT_TIME_SUM = 'Прод.'
-    PLAN_TIME_START = 'Приход'
-    PLAN_TIME_END = 'Уход'
-    PLAN_TIME_SUM = 'Прод.'
+    FACT_TIME_START = 'Приход (факт)'
+    FACT_TIME_END = 'Уход (факт)'
+    FACT_TIME_COUNT = 'Прод. (факт)'
+    PLAN_TIME_START = 'Приход (план)'
+    PLAN_TIME_END = 'Уход (план)'
+    PLAN_TIME_COUNT = 'Прод. (план)'
 
 
 @dataclass
@@ -212,6 +212,82 @@ class _HeaderInfo:
     def __init__(self, caption: str, sub: Optional[List[_SubHeaderInfo]] = None):
         self.caption = caption
         self.sub = sub
+
+
+@dataclass
+class _HumanReadableLine:
+    _NOT_FOUNDED = 'Не определен'
+
+    def __init__(self, line, organization: Optional[Organization], get_department_callback):
+        self.timesheet_id = 'нет в базе'
+        self.position = 'нет в базе'
+
+        self.employee_name = line.get('employee_name')
+        if self.employee_name is None:
+            self.employee_name = _HumanReadableLine._NOT_FOUNDED
+
+        self.device_name = line.get('device_name')
+        self.device_group_name = None
+        if self.device_name is None:
+            self.device_name = _HumanReadableLine._NOT_FOUNDED
+            self.device_group_name = _HumanReadableLine._NOT_FOUNDED
+        if self.device_group_name is None:
+            self.device_group_name = '-'
+
+        date_info = line.get('date_info')
+        self.month = date_info.get('month')
+        self.day = date_info.get('day')
+        self.week_day = date_info.get('week_day')
+        self.time = date_info.get('time')
+        self.date = date_info.get('date')
+
+        department = get_department_callback(line)
+        if department is None:
+            self.department = '-'
+        else:
+            self.department = department.name
+
+        self.employee: Optional[int] = line.get('employee')
+        if organization is None:
+            self.plan_start = 'Организация не выбрана'
+            self.plan_end = 'Организация не выбрана'
+        else:
+            organization_employees = None
+            if self.employee is not None:
+                organization_employees = Employee2Organization.objects.filter(
+                    employee=self.employee, organization=organization.id)
+
+            if organization_employees is not None:
+                if organization_employees.exists():
+                    organization_employee = organization_employees.first()
+                    if (organization_employee.timesheet_start is None) \
+                            or (organization_employee.timesheet_start is None):
+                        if (organization.timesheet_start is None) \
+                                or (organization.timesheet_start is None):
+                            self.plan_start = 'Не задано'
+                            self.plan_end = 'Не задано'
+                        else:
+                            self.plan_start = organization.timesheet_start
+                            self.plan_end = organization.timesheet_end
+                    else:
+                        self.plan_start = organization_employee.timesheet_start
+                        self.plan_end = organization_employee.timesheet_end
+                else:
+                    # TODO починить фильтр по организации - показываются лишние
+                    self.plan_start = 'Ошибка'
+                    self.plan_end = 'Ошибка'
+            else:
+                self.plan_start = 'Сотрудник не определен'
+                self.plan_end = 'Сотрудник не определен'
+
+        _plan_start = date_utils.str_to_duration(self.plan_start)
+        _plan_end = None if _plan_start is None else date_utils.str_to_duration(
+            self.plan_end)
+        if _plan_end is not None:
+            self.plan_count = date_utils.duration_to_str(
+                _plan_end - _plan_start, show_positive_symbol=False)
+        else:
+            self.plan_count = '-'
 
 
 def _get_department(line, organization: Optional[Organization] = None) -> Optional[Department]:
@@ -276,15 +352,14 @@ class _ReportFileWriter:
         _HeaderInfo('Факт', [
             _SubHeaderInfo(_HeaderName.FACT_TIME_START),
             _SubHeaderInfo(_HeaderName.FACT_TIME_END),
-            _SubHeaderInfo(_HeaderName.FACT_TIME_SUM),
+            _SubHeaderInfo(_HeaderName.FACT_TIME_COUNT),
         ]),
         _HeaderInfo('План', [
             _SubHeaderInfo(_HeaderName.PLAN_TIME_START),
             _SubHeaderInfo(_HeaderName.PLAN_TIME_END),
-            _SubHeaderInfo(_HeaderName.PLAN_TIME_SUM),
+            _SubHeaderInfo(_HeaderName.PLAN_TIME_COUNT),
         ]),
     ]
-    _NOT_FOUNDED = 'Не определен'
     LAST_HEADER_ROW_INDEX = 1
 
     def __init__(self):
@@ -314,7 +389,10 @@ class _ReportFileWriter:
     def _get_column_size(self, column: _HeaderName):
         return self._columns_size.get(column)
 
-    def _write_cell(self, row: int, column: _HeaderName, value: str):
+    def _write_cell(self, row: int, column: _HeaderName, value: Optional[str]):
+        if value is None:
+            value = ''
+
         self._worksheet.write(
             row, self._get_column_index(column), value)
 
@@ -325,83 +403,69 @@ class _ReportFileWriter:
                     queryset,
                     organization: Optional[Organization] = None,
                     department: Optional[Department] = None):
+        queryset = EmployeeRequest.objects.filter(id__in=set(
+            queryset.values_list('id', flat=True))).exclude(employee=None).order_by('employee', 'moment')
+        if (organization is None) and (department is not None):
+            organization = department.organization
         get_department = (lambda line: _get_department(line, organization)) if department is None \
             else lambda _line: department
-        for line in EmployeeRequestSerializers.HumanReadableSerializer(queryset, many=True).data:
-            if line.get('employee_name') is None:
-                line.update(employee_name=_ReportFileWriter._NOT_FOUNDED)
-            if line.get('device_name') is None:
-                line.update(device_name=_ReportFileWriter._NOT_FOUNDED,
-                            device_group_name=_ReportFileWriter._NOT_FOUNDED)
-            if line.get('device_group_name') is None:
-                line.update(device_group_name='-')
 
+        lines = list(map(lambda line: _HumanReadableLine(line=line,
+                                                         organization=organization,
+                                                         get_department_callback=get_department),
+                         EmployeeRequestSerializers.HumanReadableSerializer(queryset, many=True).data))
+        i = 0
+        i_end = len(lines)
+        while i < i_end:
+            line = lines[i]
             self._write_cell(self._row, _HeaderName.DEVICE_GROUP,
-                             line.get('device_group_name'))
+                             line.device_group_name)
 
-            date_info = line.get('date_info')
-            self._write_cell(self._row, _HeaderName.MONTH,
-                             date_info.get('month'))
-            self._write_cell(self._row, _HeaderName.DATE, date_info.get('day'))
-            self._write_cell(self._row, _HeaderName.WEEK_DAY,
-                             date_info.get('week_day'))
-
-            self._write_cell(self._row, _HeaderName.EMPLOYEE_NAME,
-                             line.get('employee_name'))
-            self._write_cell(self._row, _HeaderName.TIMESHEET_ID, 'нет в базе')
-            self._write_cell(self._row, _HeaderName.POSITION, 'нет в базе')
-
-            department = get_department(line)
-            self._write_cell(self._row, _HeaderName.DEPARTMENT,
-                             '-' if department is None else department.name)
-
-            self._write_cell(self._row, _HeaderName.FACT_TIME_START, '-')
-            self._write_cell(self._row, _HeaderName.FACT_TIME_END, '-')
-            self._write_cell(self._row, _HeaderName.FACT_TIME_SUM, '-')
-
-            plan_start = None
-            plan_end = None
-            if organization is None:
-                plan_start = 'Организация не выбрана'
-                plan_end = 'Организация не выбрана'
-            else:
-                employee: Optional[int] = line.get('employee')
-                if employee is None:
-                    plan_start = 'Сотрудник не определен'
-                    plan_end = 'Сотрудник не определен'
-                else:
-                    organization_employee = Employee2Organization.objects.get(
-                        employee=employee, organization=organization.id)
-                    if (organization_employee.timesheet_start is None) \
-                            or (organization_employee.timesheet_start is None):
-                        if (organization.timesheet_start is None) \
-                                or (organization.timesheet_start is None):
-                            plan_start = 'Не задано'
-                            plan_end = 'Не задано'
-                        else:
-                            plan_start = organization.timesheet_start
-                            plan_end = organization.timesheet_end
-                    else:
-                        plan_start = organization_employee.timesheet_start
-                        plan_end = organization_employee.timesheet_end
+            self._write_cell(self._row, _HeaderName.MONTH, line.month)
+            self._write_cell(self._row, _HeaderName.DATE, line.day)
+            self._write_cell(self._row, _HeaderName.WEEK_DAY, line.week_day)
 
             self._write_cell(
-                self._row, _HeaderName.PLAN_TIME_START, plan_start)
-            self._write_cell(self._row, _HeaderName.PLAN_TIME_END, plan_end)
+                self._row, _HeaderName.EMPLOYEE_NAME, line.employee_name)
+            self._write_cell(
+                self._row, _HeaderName.TIMESHEET_ID, line.timesheet_id)
+            self._write_cell(self._row, _HeaderName.POSITION, line.position)
+            self._write_cell(
+                self._row, _HeaderName.DEPARTMENT, line.department)
+            self._write_cell(
+                self._row, _HeaderName.PLAN_TIME_START, line.plan_start)
+            self._write_cell(
+                self._row, _HeaderName.PLAN_TIME_END, line.plan_end)
+            self._write_cell(
+                self._row, _HeaderName.PLAN_TIME_COUNT, line.plan_count)
 
-            _plan_start = date_utils.str_to_duration(plan_start)
-            _plan_end = None if _plan_start is None else date_utils.str_to_duration(
-                plan_end)
-            plan_count = None
-            if _plan_end is not None:
-                plan_count = date_utils.duration_to_str(
-                    _plan_end - _plan_start, show_positive_symbol=False)
+            fact_start = line.time
+            fact_end = None
+            next_line = None
+            fact_count = None
+            if (i + 1) < i_end:
+                next_line = lines[i + 1]
+                next_employee: Optional[int] = next_line.employee
+                if line.employee == next_employee:
+                    fact_end = next_line.time
+                    fact_count = date_utils.duration_to_str(
+                        datetime.strptime(next_line.date, date_utils.DEFAULT_DATE_FORMAT)
+                        - datetime.strptime(line.date, date_utils.DEFAULT_DATE_FORMAT),
+                        show_positive_symbol=False)
+
+            if fact_count is None:
+                fact_count = '-'
             else:
-                plan_count = '-'
+                i += 1
 
-            self._write_cell(self._row, _HeaderName.PLAN_TIME_SUM, plan_count)
+            self._write_cell(
+                self._row, _HeaderName.FACT_TIME_START, fact_start)
+            self._write_cell(self._row, _HeaderName.FACT_TIME_END, fact_end)
+            self._write_cell(
+                self._row, _HeaderName.FACT_TIME_COUNT, fact_count)
 
             self._row += 1
+            i += 1
 
     def close(self, name: str) -> FileResponse:
         self._worksheet.write(
