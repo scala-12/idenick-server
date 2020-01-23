@@ -1,7 +1,5 @@
 """models"""
 import datetime
-import uuid
-from typing import Optional
 
 from django.contrib.auth.models import User
 from django.db import models
@@ -74,16 +72,3 @@ class EntryWithTimesheet(models.Model):
 
     class Meta:
         abstract = True
-
-
-@receiver(post_save, sender=User)
-def create_user_profile(sender, instance, created, **kwargs):
-    """create user info record"""
-    if created:
-        Login.objects.create(user=instance)
-
-
-@receiver(post_save, sender=User)
-def save_user_profile(sender, instance, **kwargs):
-    """create user info record"""
-    instance.login.save()

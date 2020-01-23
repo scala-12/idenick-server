@@ -12,9 +12,7 @@ from idenick_app.classes.utils import date_utils
 from idenick_app.classes.utils.models_utils import (AbstractEntry,
                                                     AbstractSimpleEntry,
                                                     EntryWithTimesheet,
-                                                    EntryWithTimezone,
-                                                    create_user_profile,
-                                                    save_user_profile)
+                                                    EntryWithTimezone)
 
 
 class Employee(AbstractEntry):
@@ -92,6 +90,19 @@ class Employee2Department(AbstractEntry):
     class Meta:
         db_table = 'users_usergroup'
         unique_together = (('department', 'employee'),)
+
+
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    """create user info record"""
+    if created:
+        Login.objects.create(user=instance)
+
+
+@receiver(post_save, sender=User)
+def save_user_profile(sender, instance, **kwargs):
+    """create user info record"""
+    instance.login.save()
 
 
 class Login(AbstractSimpleEntry):
