@@ -97,20 +97,23 @@ class _AbstractViewSet(viewsets.ViewSet):
         page = request_utils.get_request_param(request, 'page', True)
         per_page = request_utils.get_request_param(request, 'perPage', True)
 
+        paginated_queryset = _queryset
         if (page is not None) and (per_page is not None):
             offset = page * per_page
             limit = offset + per_page
-            _queryset = _queryset[offset:limit]
+            paginated_queryset = _queryset[offset:limit]
 
         organization = None
         login = login_utils.get_login(request.user)
         if ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
             organization = login.organization_id
 
-        serializer = self.get_serializer_class()(_queryset, many=True, context={
+        serializer = self.get_serializer_class()(paginated_queryset, many=True, context={
             'organization': organization})
 
-        return {'data': serializer.data, 'count': self._get_queryset(request, base_filter=True).count()}
+        return {'data': serializer.data,
+                'baseCount': self._get_queryset(request, base_filter=True).count(),
+                'filteredCount': _queryset.count()}
 
     def _retrieve(self, request, pk=None, queryset=None):
         return request_utils.response(self._retrieve_data(request, pk, queryset))
