@@ -508,13 +508,17 @@ class EmployeeViewSet(_AbstractViewSet):
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Employee.objects.all()
 
-        dropped_filter = get_deleted_filter(request, base_filter, with_dropped)
-        if dropped_filter is _DeletedFilter.NON_DELETED.value:
-            queryset = queryset.filter(dropped_at=None)
-        elif dropped_filter is _DeletedFilter.DELETED_ONLY.value:
-            queryset = queryset.exclude(dropped_at=None)
-
         login = login_utils.get_login(request.user)
+
+        dropped_filter = get_deleted_filter(request, base_filter, with_dropped)
+        if login.role == Login.ADMIN:
+            if dropped_filter is _DeletedFilter.NON_DELETED.value:
+                queryset = queryset.filter(dropped_at=None)
+            elif dropped_filter is _DeletedFilter.DELETED_ONLY.value:
+                queryset = queryset.exclude(dropped_at=None)
+        else:
+            queryset = queryset.filter(dropped_at=None)
+
         organization_filter = None
         if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
             organization_filter = login.organization_id
@@ -536,9 +540,17 @@ class EmployeeViewSet(_AbstractViewSet):
         department_filter = request_utils.get_request_param(
             request, 'department', True, base_filter=base_filter)
         if (department_filter is not None):
+            department_employees = Employee2Department.objects.filter(
+                department_id=department_filter)
+            if dropped_filter is _DeletedFilter.NON_DELETED.value:
+                department_employees = department_employees.filter(
+                    dropped_at=None)
+            elif dropped_filter is _DeletedFilter.DELETED_ONLY.value:
+                department_employees = department_employees.exclude(
+                    dropped_at=None)
+
             queryset = queryset.filter(
-                id__in=Employee2Department.objects.filter(
-                    department_id=department_filter).values_list('employee', flat=True))
+                id__in=department_employees.values_list('employee', flat=True))
 
         if organization_filter is not None:
             employee_id_list = queryset.values_list('id', flat=True)
