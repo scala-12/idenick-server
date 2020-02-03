@@ -726,7 +726,7 @@ class _UserViewSet(_AbstractViewSet):
         exists_ids = User.objects.filter(
             id__in=user_ids).values_list('id', flat=True)
 
-        return queryset.filter(id__in=exists_ids)
+        return queryset.filter(user_id__in=exists_ids)
 
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def list(self, request):
