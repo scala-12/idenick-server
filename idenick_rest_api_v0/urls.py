@@ -9,7 +9,7 @@ from idenick_rest_api_v0.views import (ControllerViewSet, DepartmentViewSet,
                                        RegistratorViewSet, UserViewSet,
                                        add_relation, get_counts,
                                        get_current_user, get_non_related,
-                                       get_report, get_report_file,
+                                       get_report, get_employees_requests, get_report_file,
                                        registrate_biometry, remove_relation)
 
 ROUTER = DefaultRouter()
@@ -27,6 +27,7 @@ urlpatterns = ROUTER.urls
 urlpatterns += [
     path('currentUser/', get_current_user),
     url('report/', get_report),
+    url('employeesRequests/', get_employees_requests),
     url('reportFile/', get_report_file),
     url('counts/', get_counts),
 

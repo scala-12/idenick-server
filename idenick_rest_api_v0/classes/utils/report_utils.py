@@ -1,19 +1,20 @@
 """report utils"""
 import io
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import List, Optional
 
 import xlsxwriter
-from django.core.exceptions import ObjectDoesNotExist
 from django.http import FileResponse
 
 from idenick_app.classes.utils import date_utils
 from idenick_app.models import (Department, Device, Device2Organization,
-                                DeviceGroup2Organization, Employee,
-                                Employee2Department, Employee2Organization,
-                                EmployeeRequest, Login, Organization)
+                                DeviceGroup, DeviceGroup2Organization,
+                                Employee, Employee2Department,
+                                Employee2Organization, EmployeeRequest, Login,
+                                Organization)
 from idenick_rest_api_v0.classes.utils import login_utils, request_utils, utils
 from idenick_rest_api_v0.serializers import (DepartmentSerializers,
                                              DeviceSerializers,
@@ -32,7 +33,7 @@ class _ReportType(Enum):
 
 
 @dataclass
-class _ReportQuerysetInfo:
+class _RequestsQuerysetInfo:
     def __init__(self, queryset,
                  name: str,
                  count: int,
@@ -45,7 +46,7 @@ class _ReportQuerysetInfo:
         self.count = count
 
 
-def _get_report(request) -> _ReportQuerysetInfo:
+def _get_employees_requests(request, without_none: Optional[bool] = False) -> _RequestsQuerysetInfo:
     entity_id = request_utils.get_request_param(request, 'id', True)
     entity_type = _ReportType(
         request_utils.get_request_param(request, 'type'))
@@ -54,18 +55,20 @@ def _get_report(request) -> _ReportQuerysetInfo:
     page_count = request_utils.get_request_param(request, 'count', True, 1)
     per_page = request_utils.get_request_param(request, 'perPage', True)
 
-    start_date = None
-    start_time = request_utils.get_request_param(request, 'start')
-    if start_time is not None:
-        start_date = datetime.strptime(start_time, "%Y%m%d")
+    incoming_date = None
+    incoming_time = request_utils.get_request_param(request, 'start')
+    if incoming_time is not None:
+        incoming_date = datetime.strptime(incoming_time, "%Y%m%d")
 
-    end_date = None
-    end_time = request_utils.get_request_param(request, 'end')
-    if end_time is not None:
-        end_date = datetime.strptime(
-            end_time, "%Y%m%d") + timedelta(days=1, microseconds=-1)
+    outcoming_date = None
+    outcoming_time = request_utils.get_request_param(request, 'end')
+    if outcoming_time is not None:
+        outcoming_date = datetime.strptime(
+            outcoming_time, "%Y%m%d") + timedelta(days=1, microseconds=-1)
 
     report_queryset = EmployeeRequest.objects.all()
+    if without_none:
+        report_queryset.exclude(employee=None)
 
     organization = None
     department = None
@@ -77,10 +80,11 @@ def _get_report(request) -> _ReportQuerysetInfo:
     if entity_id is not None:
         if entity_type == _ReportType.EMPLOYEE:
             name = 'employee '
+            report_queryset = report_queryset.filter(employee_id=entity_id)
 
             if (organization_filter is None) or Employee2Organization.objects \
                     .filter(employee_id=entity_id).filter(organization_id=organization_filter) \
-                .exists():
+            .exists():
                 report_queryset = report_queryset.filter(
                     employee_id=entity_id)
             else:
@@ -104,33 +108,14 @@ def _get_report(request) -> _ReportQuerysetInfo:
 
             if (organization_filter is None) or (organization_filter == entity_id):
                 organization = entity_id
-                employees = Employee2Organization.objects.filter(
-                    organization_id=entity_id).values_list('employee_id', flat=True)
-                devices_of_organization = Device2Organization.objects.filter(
-                    organization_id=entity_id).values_list('device_id', flat=True)
-                devices_of_device_groups = Device.objects\
-                    .filter(device_group__in=DeviceGroup2Organization.objects.filter(
-                        organization_id=entity_id).values_list('device_group_id', flat=True))\
-                    .values_list('id', flat=True)
-
-                devices = devices_of_organization.union(
-                    devices_of_device_groups)
-
-                reports = EmployeeRequest.objects.filter(
-                    employee_id__in=employees).values_list('id', flat=True)\
-                    .union(EmployeeRequest.objects.filter(
-                        device_id__in=devices).values_list('id', flat=True))
-
-                report_queryset = report_queryset.filter(id__in=reports)
             else:
                 report_queryset = EmployeeRequest.objects.none()
-
         elif entity_type == _ReportType.DEVICE:
             name = 'device '
 
             if (organization_filter is None) \
                     or Device2Organization.objects.filter(device_id=entity_id)\
-                .filter(organization_id=organization_filter).exists():
+            .filter(organization_id=organization_filter).exists():
                 report_queryset = report_queryset.filter(
                     device_id=entity_id)
             else:
@@ -140,16 +125,9 @@ def _get_report(request) -> _ReportQuerysetInfo:
 
             if (organization_filter is None) \
                     or DeviceGroup2Organization.objects.filter(device_group_id=entity_id) \
-                .filter(organization_id=organization_filter).exists():
+            .filter(organization_id=organization_filter).exists():
                 devices_ids = Device.objects.filter(
                     device_group_id=entity_id).values_list('id', flat=True)
-
-                if organization_filter is not None:
-                    devices_of_organization = Device2Organization.objects.filter(
-                        organization_id=organization_filter).values_list('device_id', flat=True)
-
-                    devices_ids = set(devices_ids).intersection(
-                        set(devices_of_organization))
 
                 report_queryset = report_queryset.filter(
                     device_id__in=devices_ids)
@@ -160,12 +138,25 @@ def _get_report(request) -> _ReportQuerysetInfo:
     else:
         name = 'full'
 
+    if organization is not None:
+        organization_employees = Employee2Organization.objects.filter(
+            organization_id=entity_id).values_list('employee_id', flat=True)
+        organization_devices = Device2Organization.objects.filter(
+            organization_id=entity_id).values_list('device_id', flat=True)
+
+        reports = EmployeeRequest.objects.filter(
+            employee_id__in=organization_employees).values_list('id', flat=True)\
+            .union(EmployeeRequest.objects.filter(
+                device_id__in=organization_devices).values_list('id', flat=True))
+
+        report_queryset = report_queryset.filter(id__in=reports)
+
     report_queryset = report_queryset.order_by('-moment')
 
-    if start_date is not None:
-        report_queryset = report_queryset.filter(moment__gte=start_date)
-    if end_date is not None:
-        report_queryset = report_queryset.filter(moment__lte=end_date)
+    if incoming_date is not None:
+        report_queryset = report_queryset.filter(moment__gte=incoming_date)
+    if outcoming_date is not None:
+        report_queryset = report_queryset.filter(moment__lte=outcoming_date)
 
     paginated_report_queryset = None
     if (page is None) or (per_page is None):
@@ -175,11 +166,12 @@ def _get_report(request) -> _ReportQuerysetInfo:
         limit = offset + int(per_page) * int(page_count)
         paginated_report_queryset = report_queryset[offset:limit]
 
-    return _ReportQuerysetInfo(queryset=paginated_report_queryset,
-                               name=name, count=report_queryset.count(),
-                               organization=None if organization is None
-                               else Organization.objects.get(id=organization),
-                               department=department,)
+    return _RequestsQuerysetInfo(queryset=paginated_report_queryset,
+                                 name=name,
+                                 count=report_queryset.count(),
+                                 organization=None if organization is None
+                                 else Organization.objects.get(id=organization),
+                                 department=department,)
 
 
 class _HeaderName(Enum):
@@ -214,88 +206,11 @@ class _HeaderInfo:
         self.sub = sub
 
 
-@dataclass
-class _HumanReadableLine:
-    _NOT_FOUNDED = 'Не определен'
-
-    def __init__(self, line, organization: Optional[Organization], get_department_callback):
-        self.timesheet_id = 'нет в базе'
-        self.position = 'нет в базе'
-
-        self.employee_name = line.get('employee_name')
-        if self.employee_name is None:
-            self.employee_name = _HumanReadableLine._NOT_FOUNDED
-
-        self.device_name = line.get('device_name')
-        self.device_group_name = None
-        if self.device_name is None:
-            self.device_name = _HumanReadableLine._NOT_FOUNDED
-            self.device_group_name = _HumanReadableLine._NOT_FOUNDED
-        if self.device_group_name is None:
-            self.device_group_name = '-'
-
-        date_info = line.get('date_info')
-        self.month = date_info.get('month')
-        self.day = date_info.get('day')
-        self.week_day = date_info.get('week_day')
-        self.time = date_info.get('time')
-        self.date = date_info.get('date')
-
-        department = get_department_callback(line)
-        if department is None:
-            self.department = '-'
-        else:
-            self.department = department.name
-
-        self.employee: Optional[int] = line.get('employee')
-        if organization is None:
-            self.plan_start = 'Организация не выбрана'
-            self.plan_end = 'Организация не выбрана'
-        else:
-            organization_employees = None
-            if self.employee is not None:
-                organization_employees = Employee2Organization.objects.filter(
-                    employee=self.employee, organization=organization.id)
-
-            if organization_employees is not None:
-                if organization_employees.exists():
-                    organization_employee = organization_employees.first()
-                    if (organization_employee.timesheet_start is None) \
-                            or (organization_employee.timesheet_start is None):
-                        if (organization.timesheet_start is None) \
-                                or (organization.timesheet_start is None):
-                            self.plan_start = 'Не задано'
-                            self.plan_end = 'Не задано'
-                        else:
-                            self.plan_start = organization.timesheet_start
-                            self.plan_end = organization.timesheet_end
-                    else:
-                        self.plan_start = organization_employee.timesheet_start
-                        self.plan_end = organization_employee.timesheet_end
-                else:
-                    # TODO починить фильтр по организации - показываются лишние
-                    self.plan_start = 'Ошибка'
-                    self.plan_end = 'Ошибка'
-            else:
-                self.plan_start = 'Сотрудник не определен'
-                self.plan_end = 'Сотрудник не определен'
-
-        _plan_start = date_utils.str_to_duration(self.plan_start)
-        _plan_end = None if _plan_start is None else date_utils.str_to_duration(
-            self.plan_end)
-        if _plan_end is not None:
-            self.plan_count = date_utils.duration_to_str(
-                _plan_end - _plan_start, show_positive_symbol=False)
-        else:
-            self.plan_count = '-'
-
-
-def _get_department(line, organization: Optional[Organization] = None) -> Optional[Department]:
+def _find_report_department(request: EmployeeRequest,
+                            organization: Optional[Organization] = None) -> Optional[Department]:
     """return department from report line"""
     department = None
-    employee = line.get('employee')
-    if employee is None:
-        return None
+    employee = request.employee
 
     organizations = None
     if organization is None:
@@ -304,17 +219,20 @@ def _get_department(line, organization: Optional[Organization] = None) -> Option
         if not employee_organizations:
             return None
 
-        device = line.get('device')
-        if device is not None:
-            device_organizations = set(Device2Organization.objects.filter(
-                device=device).values_list('organization_id', flat=True))
-            employee_organizations = employee_organizations.intersection(
-                device_organizations)
-            if not employee_organizations:
-                return None
+        device = request.device
+        device_organizations = set(Device2Organization.objects.filter(
+            device=device).values_list('organization_id', flat=True))
+        employee_organizations = employee_organizations.intersection(
+            device_organizations)
+
+        if not employee_organizations:
+            return None
 
         organizations = Organization.objects.filter(
             id__in=employee_organizations)
+
+        if not organizations:
+            return None
     else:
         organizations = [organization]
 
@@ -323,8 +241,6 @@ def _get_department(line, organization: Optional[Organization] = None) -> Option
     if not employee_departments.exists():
         return None
 
-    if not organizations:
-        return None
     departments = Department.objects.filter(
         id__in=employee_departments, organization_id__in=organizations, show_in_report=True)
 
@@ -332,6 +248,205 @@ def _get_department(line, organization: Optional[Organization] = None) -> Option
         department = departments.first()
 
     return department
+
+
+@dataclass
+class RequestsInfo:
+    def __init__(self, queryset, count, extra):
+        self.data = EmployeeRequestSerializers.ModelSerializer(
+            queryset, many=True).data
+        self.count = count
+        self.extra = extra
+
+
+def get_employees_requests(request) -> RequestsInfo:
+    """get request events"""
+    info = _get_employees_requests(request)
+    report_queryset = info.queryset
+
+    login = login_utils.get_login(request.user)
+
+    show_organization = 'showorganization' in request.GET
+    entity_id = request_utils.get_request_param(request, 'id', True)
+    entity_type = _ReportType(
+        request_utils.get_request_param(request, 'type'))
+    show_department = (entity_type == _ReportType.DEPARTMENT) and (
+        entity_id is not None)
+    show_device = 'showdevice' in request.GET
+
+    extra = {}
+
+    employees_ids = set(
+        report_queryset.values_list('employee_id', flat=True))
+    employees_queryset = Employee.objects.filter(
+        id__in=employees_ids)
+
+    extra.update(employees=utils.get_objects_by_id(
+        EmployeeSerializers.ModelSerializer, queryset=employees_queryset))
+
+    if show_organization:
+        if login.role == Login.CONTROLLER:
+            extra.update(organizations={
+                login.organization_id: OrganizationSerializers.ModelSerializer(
+                    Organization.objects.get(pk=login.organization_id)).data})
+
+    if show_department:
+        extra.update({'department': DepartmentSerializers.ModelSerializer(
+            Department.objects.get(id=entity_id)).data})
+
+    if show_device:
+        devices_ids = set(report_queryset.values_list('device_id', flat=True))
+        extra.update(devices=utils.get_objects_by_id(
+            DeviceSerializers.ModelSerializer, clazz=Device, ids=devices_ids))
+
+    return RequestsInfo(queryset=report_queryset, count=info.count, extra=extra)
+
+
+@dataclass
+class _ReportLine:
+    def __init__(self,
+                 id: int,
+                 employee: Employee,
+                 department: Department,
+                 utc: str,
+                 incoming_date: date_utils.DateInfo,
+                 incoming_device: Optional[DeviceGroup] = None,
+                 outcoming_date: Optional[date_utils.DateInfo] = None,
+                 outcoming_device: Optional[DeviceGroup] = None,
+                 ):
+        self.id = id
+        self.employee = employee
+        self.department = department
+
+        self.date = incoming_date.day
+        self.month = incoming_date.month
+        self.week_day = incoming_date.week_day
+        self.utc = utc
+
+        self.incoming_time = incoming_date.time
+        outcoming_time = None
+        time_count = None
+        if outcoming_date is None:
+            outcoming_time = '-'
+            time_count = '-'
+        else:
+            outcoming_time = outcoming_date.time
+            time_count = date_utils.duration_to_str(
+                outcoming_date.date - incoming_date.date,
+                show_positive_symbol=False)
+
+        self.outcoming_time = outcoming_time
+        self.time_count = time_count
+
+        device_groups = None
+        if (incoming_device is not None) \
+                and (incoming_device.device_group is not None):
+            device_groups = incoming_device.device_group_name
+        else:
+            device_groups = '-'
+
+        if (outcoming_device is not None) \
+                and (outcoming_device.device_group is not None):
+            device_groups += ' / ' + outcoming_device.device_group_name
+        self.device_groups = device_groups
+
+
+@dataclass
+class _ReportLinesInfo:
+    def __init__(self, lines: List[_ReportLine], organization: Organization, name: str):
+        self.lines = lines
+        self.count = len(lines)
+        self.organization = organization
+        self.name = name
+
+
+def _get_report_info(request) -> _ReportLinesInfo:
+    """get report info for users"""
+    report_data = _get_employees_requests(request, without_none=True)
+    report_queryset = report_data.queryset
+
+    queryset = EmployeeRequest.objects.filter(id__in=set(
+        report_queryset.values_list('id', flat=True))).order_by('employee', 'moment')
+
+    get_department = (lambda request: _find_report_department(request, report_data.organization)) \
+        if report_data.department is None \
+        else lambda _line: report_data.department
+
+    requests = list(queryset)
+    i = 0
+    i_end = len(requests)
+
+    report_lines = []
+    while i < i_end:
+        request: EmployeeRequest = requests[i]
+
+        incoming_device = request.device
+        outcoming_device = None
+        incoming_date = request.get_date_info()
+        outcoming_date = None
+        next_request = None
+        if (i + 1) < i_end:
+            next_request: EmployeeRequest = requests[i + 1]
+            next_date_info = next_request.get_date_info()
+            if (request.employee_id == next_request.employee_id) \
+                    and (incoming_date.day == next_date_info.day):
+                outcoming_date = next_date_info
+                outcoming_device = next_request.device
+                i += 1
+
+        line = _ReportLine(id=request.id,
+                           employee=request.employee,
+                           department=get_department(request),
+                           incoming_date=incoming_date,
+                           incoming_device=incoming_device,
+                           outcoming_date=outcoming_date,
+                           outcoming_device=outcoming_device,
+                           utc=incoming_date.utc)
+        report_lines.append(line)
+
+        i += 1
+
+    return _ReportLinesInfo(lines=report_lines,
+                            organization=report_data.organization,
+                            name=report_data.name)
+
+
+@dataclass
+class ReportInfo:
+    def __init__(self, info: _ReportLinesInfo):
+        def serialize(line: _ReportLine):
+            result = {}
+            result.update(vars(line))
+            result.update(employee=line.employee.id)
+            result.update(
+                department=None if line.department is None else line.department.id)
+
+            return result
+
+        self.data = list(map(serialize, info.lines))
+        self.count = info.count
+
+        employees = {}
+        departments = {}
+        for line in info.lines:
+            if not (line.employee.id in employees):
+                employees.update(
+                    {line.employee.id: EmployeeSerializers.ModelSerializer(line.employee).data})
+            if not ((line.department is None) or (line.department.id in departments)):
+                departments.update(
+                    {line.department.id:
+                        DepartmentSerializers.ModelSerializer(line.department).data})
+
+        extra = {'employees': employees, 'departments': departments}
+
+        self.extra = extra
+
+
+def get_report(request):
+    """get report for users"""
+    info = _get_report_info(request)
+
+    return ReportInfo(info)
 
 
 class _ReportFileWriter:
@@ -399,75 +514,58 @@ class _ReportFileWriter:
         if self._columns_size.get(column) < len(value):
             self._columns_size.update({column: len(value)})
 
-    def write_lines(self,
-                    queryset,
-                    organization: Optional[Organization] = None,
-                    department: Optional[Department] = None):
-        queryset = EmployeeRequest.objects.filter(id__in=set(
-            queryset.values_list('id', flat=True))).exclude(employee=None).order_by('employee', 'moment')
-        if (organization is None) and (department is not None):
-            organization = department.organization
-        get_department = (lambda line: _get_department(line, organization)) if department is None \
-            else lambda _line: department
-
-        lines = list(map(lambda line: _HumanReadableLine(line=line,
-                                                         organization=organization,
-                                                         get_department_callback=get_department),
-                         EmployeeRequestSerializers.HumanReadableSerializer(queryset, many=True).data))
-        i = 0
-        i_end = len(lines)
-        while i < i_end:
-            line = lines[i]
-            self._write_cell(self._row, _HeaderName.DEVICE_GROUP,
-                             line.device_group_name)
+    def write_lines(self, info: _ReportLinesInfo):
+        for line in info.lines:
+            self._write_cell(
+                self._row, _HeaderName.DEVICE_GROUP, line.device_groups)
 
             self._write_cell(self._row, _HeaderName.MONTH, line.month)
-            self._write_cell(self._row, _HeaderName.DATE, line.day)
+            self._write_cell(self._row, _HeaderName.DATE, line.date)
             self._write_cell(self._row, _HeaderName.WEEK_DAY, line.week_day)
 
             self._write_cell(
-                self._row, _HeaderName.EMPLOYEE_NAME, line.employee_name)
+                self._row, _HeaderName.EMPLOYEE_NAME, line.employee.full_name)
             self._write_cell(
-                self._row, _HeaderName.TIMESHEET_ID, line.timesheet_id)
-            self._write_cell(self._row, _HeaderName.POSITION, line.position)
+                self._row, _HeaderName.TIMESHEET_ID, 'нет в базе')
+            self._write_cell(self._row, _HeaderName.POSITION, 'нет в базе')
             self._write_cell(
                 self._row, _HeaderName.DEPARTMENT, line.department)
-            self._write_cell(
-                self._row, _HeaderName.PLAN_TIME_START, line.plan_start)
-            self._write_cell(
-                self._row, _HeaderName.PLAN_TIME_END, line.plan_end)
-            self._write_cell(
-                self._row, _HeaderName.PLAN_TIME_COUNT, line.plan_count)
 
-            fact_start = line.time
-            fact_end = None
-            next_line = None
-            fact_count = None
-            if (i + 1) < i_end:
-                next_line = lines[i + 1]
-                next_employee: Optional[int] = next_line.employee
-                if line.employee == next_employee:
-                    fact_end = next_line.time
-                    fact_count = date_utils.duration_to_str(
-                        datetime.strptime(next_line.date, date_utils.DEFAULT_DATE_FORMAT)
-                        - datetime.strptime(line.date, date_utils.DEFAULT_DATE_FORMAT),
-                        show_positive_symbol=False)
+            plan_start = '-'
+            plan_end = '-'
+            plan_count = '-'
 
-            if fact_count is None:
-                fact_count = '-'
+            _plan_start = info.organization.timesheet_start_as_duration
+            _plan_end = info.organization.timesheet_end_as_duration
+            _plan_count = info.organization.timesheet_count
+            if (_plan_start is None) or (_plan_end is None) or (_plan_count is None):
+                plan_start = '-'
+                plan_end = '-'
+                plan_count = '-'
             else:
-                i += 1
+                plan_start = info.organization.timesheet_start
+                plan_end = info.organization.timesheet_end
+                plan_count = date_utils.duration_to_str(
+                    _plan_count, show_positive_symbol=False)
 
             self._write_cell(
-                self._row, _HeaderName.FACT_TIME_START, fact_start)
-            self._write_cell(self._row, _HeaderName.FACT_TIME_END, fact_end)
+                self._row, _HeaderName.PLAN_TIME_START, plan_start)
             self._write_cell(
-                self._row, _HeaderName.FACT_TIME_COUNT, fact_count)
+                self._row, _HeaderName.PLAN_TIME_END, plan_end)
+            self._write_cell(
+                self._row, _HeaderName.PLAN_TIME_COUNT, plan_count)
+
+            self._write_cell(
+                self._row, _HeaderName.FACT_TIME_START, line.incoming_time)
+            self._write_cell(
+                self._row, _HeaderName.FACT_TIME_END, line.outcoming_time)
+            self._write_cell(
+                self._row, _HeaderName.FACT_TIME_COUNT, line.time_count)
 
             self._row += 1
-            i += 1
 
     def close(self, name: str) -> FileResponse:
+        """save file as response"""
         self._worksheet.write(
             self._row, 0, 'Кол-во: %d' % (self._row -
                                           1 - _ReportFileWriter.LAST_HEADER_ROW_INDEX))
@@ -497,65 +595,10 @@ class _ReportFileWriter:
 
 def get_report_file(request) -> FileResponse:
     """report file"""
-    report_data = _get_report(request)
+    info = _get_report_info(request)
 
     writer = _ReportFileWriter()
-    writer.write_lines(queryset=report_data.queryset,
-                       organization=report_data.organization,
-                       department=report_data.department)
-    response = writer.close(report_data.name)
+    writer.write_lines(info)
+    response = writer.close(info.name)
 
     return response
-
-
-@dataclass
-class ReportInfo:
-    def __init__(self, queryset, count, extra):
-        self.data = EmployeeRequestSerializers.ModelSerializer(
-            queryset, many=True).data
-        self.count = count
-        self.extra = extra
-
-
-def get_report(request) -> ReportInfo:
-    """return report"""
-    login = login_utils.get_login(request.user)
-
-    show_organization = 'showorganization' in request.GET
-    entity_id = request_utils.get_request_param(request, 'id', True)
-    entity_type = _ReportType(
-        request_utils.get_request_param(request, 'type'))
-    show_department = (entity_type == _ReportType.DEPARTMENT) and (
-        entity_id is not None)
-    show_device = 'showdevice' in request.GET
-
-    report_data = _get_report(request)
-    report_queryset = report_data.queryset
-
-    extra = {}
-
-    employees_ids = set(
-        report_queryset.values_list('employee_id', flat=True))
-    employees_queryset = Employee.objects.filter(
-        id__in=employees_ids)
-
-    extra.update(employees=utils.get_objects_by_id(
-        EmployeeSerializers.ModelSerializer, queryset=employees_queryset))
-
-    if show_organization:
-        if login.role == Login.CONTROLLER:
-            extra.update(organizations={
-                login.organization_id: OrganizationSerializers.ModelSerializer(
-                    Organization.objects.get(pk=login.organization_id)).data})
-
-    if show_department:
-        extra.update({'department': DepartmentSerializers.ModelSerializer(
-            Department.objects.get(id=entity_id)).data})
-
-    if show_device:
-        devices_ids = set(
-            report_queryset.values_list('device_id', flat=True))
-        extra.update(devices=utils.get_objects_by_id(
-            DeviceSerializers.ModelSerializer, clazz=Device, ids=devices_ids))
-
-    return ReportInfo(queryset=report_queryset, count=report_data.count, extra=extra)

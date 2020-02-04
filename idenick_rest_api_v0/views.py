@@ -1174,6 +1174,12 @@ def get_report(request):
     """return report"""
     return Response(vars(report_utils.get_report(request)))
 
+@api_view(['GET'])
+@login_utils.login_check_decorator(Login.CONTROLLER, Login.REGISTRATOR, Login.ADMIN)
+def get_employees_requests(request):
+    """return report"""
+    return Response(vars(report_utils.get_employees_requests(request)))
+
 
 @api_view(['POST'])
 @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
