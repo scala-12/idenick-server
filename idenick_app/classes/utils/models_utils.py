@@ -52,6 +52,33 @@ class EntryWithTimesheet(models.Model):
     timesheet_end = models.CharField(max_length=5,
                                      default=None, null=True, blank=True,)
 
+    @property
+    def timesheet_count(self) -> Optional[datetime.timedelta]:
+        """timesheet count"""
+        result = None
+        if (self.timesheet_start is not None) and (self.timesheet_end is not None):
+            result = self.timesheet_end_as_duration - self.timesheet_start_as_duration
+
+        return result
+
+    @property
+    def timesheet_start_as_duration(self) -> Optional[datetime.timedelta]:
+        """timesheet start"""
+        result = None
+        if self.timesheet_start is not None:
+            result = date_utils.str_to_duration(self.timesheet_start)
+
+        return result
+
+    @property
+    def timesheet_end_as_duration(self) -> Optional[datetime.timedelta]:
+        """timesheet end"""
+        result = None
+        if self.timesheet_end is not None:
+            result = date_utils.str_to_duration(self.timesheet_end)
+
+        return result
+
     def save_timesheet(self, *args, **kwargs):
         do_save = True
         if (self.timesheet_start is None) or (self.timesheet_end is None):
