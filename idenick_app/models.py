@@ -12,7 +12,8 @@ from idenick_app.classes.utils import date_utils
 from idenick_app.classes.utils.models_utils import (AbstractEntry,
                                                     AbstractSimpleEntry,
                                                     EntryWithTimesheet,
-                                                    EntryWithTimezone)
+                                                    EntryWithTimezone,
+                                                    DELETED_STATUS)
 
 
 class Employee(AbstractEntry):
@@ -386,7 +387,7 @@ class EmployeeRequest(models.Model):
         return result
 
     @property
-    def related_moment(self) -> Optional[datetime.datetime]:
+    def related_moment(self) -> datetime.datetime:
         result = self.moment
         if (self.device is not None) and (self.device.timezone is not None):
             result = result + self.device.timezone
