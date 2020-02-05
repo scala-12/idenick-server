@@ -307,7 +307,7 @@ class _ReportLine:
     def __init__(self,
                  id: int,
                  employee: Employee,
-                 department: Department,
+                 department: Optional[Department],
                  utc: str,
                  incoming_date: date_utils.DateInfo,
                  incoming_device: Optional[DeviceGroup] = None,
@@ -327,7 +327,6 @@ class _ReportLine:
         outcoming_time = None
         time_count = None
         if outcoming_date is None:
-            outcoming_time = '-'
             time_count = '-'
         else:
             outcoming_time = outcoming_date.time
@@ -529,7 +528,8 @@ class _ReportFileWriter:
                 self._row, _HeaderName.TIMESHEET_ID, 'нет в базе')
             self._write_cell(self._row, _HeaderName.POSITION, 'нет в базе')
             self._write_cell(
-                self._row, _HeaderName.DEPARTMENT, line.department)
+                self._row, _HeaderName.DEPARTMENT, '-' if line.department is None
+                else line.department.name)
 
             plan_start = '-'
             plan_end = '-'
@@ -558,7 +558,8 @@ class _ReportFileWriter:
             self._write_cell(
                 self._row, _HeaderName.FACT_TIME_START, line.incoming_time)
             self._write_cell(
-                self._row, _HeaderName.FACT_TIME_END, line.outcoming_time)
+                self._row, _HeaderName.FACT_TIME_END, '-' if line.outcoming_time is None
+                else line.outcoming_time)
             self._write_cell(
                 self._row, _HeaderName.FACT_TIME_COUNT, line.time_count)
 
