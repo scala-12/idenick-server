@@ -46,14 +46,20 @@ class _RequestsQuerysetInfo:
         self.count = count
 
 
-def _get_employees_requests(request, without_none: Optional[bool] = False) -> _RequestsQuerysetInfo:
+def _get_employees_requests(request,
+                            without_none: Optional[bool] = False,
+                            without_pagination: Optional[bool] = False) -> _RequestsQuerysetInfo:
     entity_id = request_utils.get_request_param(request, 'id', True)
     entity_type = _ReportType(
         request_utils.get_request_param(request, 'type'))
 
-    page = request_utils.get_request_param(request, 'from', True)
-    page_count = request_utils.get_request_param(request, 'count', True, 1)
-    per_page = request_utils.get_request_param(request, 'perPage', True)
+    page = None
+    page_count = None
+    per_page = None
+    if not without_pagination:
+        page = request_utils.get_request_param(request, 'from', True)
+        page_count = request_utils.get_request_param(request, 'count', True, 1)
+        per_page = request_utils.get_request_param(request, 'perPage', True)
 
     from_date = None
     from_time = request_utils.get_request_param(request, 'start')
@@ -84,7 +90,7 @@ def _get_employees_requests(request, without_none: Optional[bool] = False) -> _R
 
             if (organization_filter is None) or Employee2Organization.objects \
                     .filter(employee_id=entity_id).filter(organization_id=organization_filter) \
-            .exists():
+                .exists():
                 report_queryset = report_queryset.filter(
                     employee_id=entity_id)
             else:
@@ -115,7 +121,7 @@ def _get_employees_requests(request, without_none: Optional[bool] = False) -> _R
 
             if (organization_filter is None) \
                     or Device2Organization.objects.filter(device_id=entity_id)\
-            .filter(organization_id=organization_filter).exists():
+                .filter(organization_id=organization_filter).exists():
                 report_queryset = report_queryset.filter(
                     device_id=entity_id)
             else:
@@ -125,7 +131,7 @@ def _get_employees_requests(request, without_none: Optional[bool] = False) -> _R
 
             if (organization_filter is None) \
                     or DeviceGroup2Organization.objects.filter(device_group_id=entity_id) \
-            .filter(organization_id=organization_filter).exists():
+                .filter(organization_id=organization_filter).exists():
                 devices_ids = Device.objects.filter(
                     device_group_id=entity_id).values_list('id', flat=True)
 
@@ -352,50 +358,51 @@ class _ReportLine:
 
 @dataclass
 class _ReportLinesInfo:
-    def __init__(self, lines: List[_ReportLine], organization: Organization, name: str):
+    def __init__(self, lines: List[_ReportLine], count: int, organization: Organization, name: str):
         self.lines = lines
-        self.count = len(lines)
+        self.count = count
         self.organization = organization
         self.name = name
 
 
 def _get_report_info(request) -> _ReportLinesInfo:
     """get report info for users"""
-    report_data = _get_employees_requests(request, without_none=True)
+    report_data = _get_employees_requests(
+        request, without_none=True, without_pagination=True)
     report_queryset = report_data.queryset
 
     queryset = EmployeeRequest.objects.filter(id__in=set(
         report_queryset.values_list('id', flat=True))).order_by('employee', 'moment')
 
-    get_department = (lambda request: _find_report_department(request, report_data.organization)) \
+    get_department = (lambda employee_request: _find_report_department(employee_request, report_data.organization)) \
         if report_data.department is None \
         else lambda _line: report_data.department
 
-    requests = list(queryset)
+    employee_requests = list(queryset)
     i = 0
-    i_end = len(requests)
+    i_end = len(employee_requests)
 
     report_lines = []
     while i < i_end:
-        request: EmployeeRequest = requests[i]
+        employee_request: EmployeeRequest = employee_requests[i]
 
-        incoming_device = request.device
+        incoming_device = employee_request.device
         outcoming_device = None
-        incoming_date = request.get_date_info()
+        incoming_date = employee_request.get_date_info()
         outcoming_date = None
-        next_request = None
+        next_employee_request = None
         if (i + 1) < i_end:
-            next_request: EmployeeRequest = requests[i + 1]
-            next_date_info = next_request.get_date_info()
-            if (request.employee_id == next_request.employee_id) \
+            next_employee_request: EmployeeRequest = employee_requests[i + 1]
+            next_date_info = next_employee_request.get_date_info()
+            if (employee_request.employee_id == next_employee_request.employee_id) \
                     and (incoming_date.day == next_date_info.day):
                 outcoming_date = next_date_info
-                outcoming_device = next_request.device
+                outcoming_device = next_employee_request.device
                 i += 1
 
-        line = _ReportLine(id=request.id,
-                           employee=request.employee,
-                           department=get_department(request),
+        line = _ReportLine(id=employee_request.id,
+                           employee=employee_request.employee,
+                           department=get_department(employee_request),
                            incoming_date=incoming_date,
                            incoming_device=incoming_device,
                            outcoming_date=outcoming_date,
@@ -405,7 +412,18 @@ def _get_report_info(request) -> _ReportLinesInfo:
 
         i += 1
 
+    page = request_utils.get_request_param(request, 'from', True)
+    page_count = request_utils.get_request_param(request, 'count', True, 1)
+    per_page = request_utils.get_request_param(request, 'perPage', True)
+
+    count = len(report_lines)
+    if (page is not None) and (per_page is not None):
+        offset = int(page) * int(per_page)
+        limit = offset + int(per_page) * int(page_count)
+        report_lines = report_lines[offset:limit]
+
     return _ReportLinesInfo(lines=report_lines,
+                            count=count,
                             organization=report_data.organization,
                             name=report_data.name)
 
