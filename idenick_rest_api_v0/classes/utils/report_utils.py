@@ -55,16 +55,16 @@ def _get_employees_requests(request, without_none: Optional[bool] = False) -> _R
     page_count = request_utils.get_request_param(request, 'count', True, 1)
     per_page = request_utils.get_request_param(request, 'perPage', True)
 
-    incoming_date = None
-    incoming_time = request_utils.get_request_param(request, 'start')
-    if incoming_time is not None:
-        incoming_date = datetime.strptime(incoming_time, "%Y%m%d")
+    from_date = None
+    from_time = request_utils.get_request_param(request, 'start')
+    if from_time is not None:
+        from_date = datetime.strptime(from_time, "%Y%m%d")
 
-    outcoming_date = None
-    outcoming_time = request_utils.get_request_param(request, 'end')
-    if outcoming_time is not None:
-        outcoming_date = datetime.strptime(
-            outcoming_time, "%Y%m%d") + timedelta(days=1, microseconds=-1)
+    to_date = None
+    to_time = request_utils.get_request_param(request, 'end')
+    if to_time is not None:
+        to_date = datetime.strptime(
+            to_time, "%Y%m%d") + timedelta(days=1, microseconds=-1)
 
     report_queryset = EmployeeRequest.objects.all()
     if without_none:
@@ -153,10 +153,10 @@ def _get_employees_requests(request, without_none: Optional[bool] = False) -> _R
 
     report_queryset = report_queryset.order_by('-moment')
 
-    if incoming_date is not None:
-        report_queryset = report_queryset.filter(moment__gte=incoming_date)
-    if outcoming_date is not None:
-        report_queryset = report_queryset.filter(moment__lte=outcoming_date)
+    if from_date is not None:
+        report_queryset = report_queryset.filter(moment__gte=from_date)
+    if to_date is not None:
+        report_queryset = report_queryset.filter(moment__lte=to_date)
 
     paginated_report_queryset = None
     if (page is None) or (per_page is None):
