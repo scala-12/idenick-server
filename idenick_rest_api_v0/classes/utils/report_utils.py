@@ -89,8 +89,8 @@ def _get_employees_requests(request,
             report_queryset = report_queryset.filter(employee_id=entity_id)
 
             if (organization_filter is None) or Employee2Organization.objects \
-                    .filter(employee_id=entity_id).filter(organization_id=organization_filter) \
-                .exists():
+                    .filter(employee_id=entity_id, organization_id=organization_filter) \
+            .exists():
                 report_queryset = report_queryset.filter(
                     employee_id=entity_id)
             else:
@@ -121,7 +121,7 @@ def _get_employees_requests(request,
 
             if (organization_filter is None) \
                     or Device2Organization.objects.filter(device_id=entity_id)\
-                .filter(organization_id=organization_filter).exists():
+            .filter(organization_id=organization_filter).exists():
                 report_queryset = report_queryset.filter(
                     device_id=entity_id)
             else:
@@ -131,7 +131,7 @@ def _get_employees_requests(request,
 
             if (organization_filter is None) \
                     or DeviceGroup2Organization.objects.filter(device_group_id=entity_id) \
-                .filter(organization_id=organization_filter).exists():
+            .filter(organization_id=organization_filter).exists():
                 devices_ids = Device.objects.filter(
                     device_group_id=entity_id).values_list('id', flat=True)
 
@@ -146,9 +146,9 @@ def _get_employees_requests(request,
 
     if organization is not None:
         organization_employees = Employee2Organization.objects.filter(
-            organization_id=entity_id).values_list('employee_id', flat=True)
+            organization_id=organization).values_list('employee_id', flat=True)
         organization_devices = Device2Organization.objects.filter(
-            organization_id=entity_id).values_list('device_id', flat=True)
+            organization_id=organization).values_list('device_id', flat=True)
 
         reports = EmployeeRequest.objects.filter(
             employee_id__in=organization_employees).values_list('id', flat=True)\
