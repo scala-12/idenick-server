@@ -111,12 +111,15 @@ def get_relates(slave_info: EntityClassInfo,
     if role in (Login.CONTROLLER, Login.REGISTRATOR):
         organization = login.organization_id
         if is_device_2_device_group:
-            queryset = queryset\
-                .filter(id__in=Device2Organization.objects
-                        .filter(
-                            organization_id=organization).values_list(slave_info.key, flat=True))\
-                .filter(**{master_info.key + '__in': DeviceGroup2Organization.objects.filter(
-                    organization_id=organization).values_list(master_info.key, flat=True)})
+            organization_devices = Device2Organization.objects.filter(
+                organization_id=organization).values_list(slave_info.key, flat=True)
+            queryset = queryset.filter(id__in=organization_devices)
+
+            if intersections:
+                organization_device_groups = DeviceGroup2Organization.objects.filter(
+                    organization_id=organization).values_list(master_info.key, flat=True)
+                queryset = queryset\
+                    .filter(**{master_info.key + '__in': organization_device_groups})
         elif relation_clazz is Employee2Department:
             if slave_info.model is Employee:
                 queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
