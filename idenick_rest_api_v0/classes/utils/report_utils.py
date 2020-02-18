@@ -74,7 +74,7 @@ def _get_employees_requests(request,
 
     report_queryset = EmployeeRequest.objects.all()
     if without_none:
-        report_queryset.exclude(employee=None)
+        report_queryset = report_queryset.exclude(employee=None)
 
     organization = None
     department = None
@@ -346,13 +346,13 @@ class _ReportLine:
         device_groups = None
         if (incoming_device is not None) \
                 and (incoming_device.device_group is not None):
-            device_groups = incoming_device.device_group_name
+            device_groups = incoming_device.device_group.name
         else:
             device_groups = '-'
 
         if (outcoming_device is not None) \
                 and (outcoming_device.device_group is not None):
-            device_groups += ' / ' + outcoming_device.device_group_name
+            device_groups += ' / ' + outcoming_device.device_group.name
         self.device_groups = device_groups
 
 
