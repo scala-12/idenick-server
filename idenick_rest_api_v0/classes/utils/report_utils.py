@@ -32,6 +32,11 @@ class _ReportType(Enum):
     ALL = 'ALL'
 
 
+class _ReportTimeType(Enum):
+    ALL = 'ALL'
+    LATE = 'LATE'
+
+
 @dataclass
 class _RequestsQuerysetInfo:
     def __init__(self, queryset,
@@ -370,11 +375,14 @@ def _get_report_info(request) -> _ReportLinesInfo:
     report_data = _get_employees_requests(
         request, without_none=True, without_pagination=True)
     report_queryset = report_data.queryset
+    time_type = _ReportTimeType(
+        request_utils.get_request_param(request, 'timeType'))
 
     queryset = EmployeeRequest.objects.filter(id__in=set(
         report_queryset.values_list('id', flat=True))).order_by('employee', 'moment')
 
-    get_department = (lambda employee_request: _find_report_department(employee_request, report_data.organization)) \
+    get_department = (lambda employee_request:
+                      _find_report_department(employee_request, report_data.organization)) \
         if report_data.department is None \
         else lambda _line: report_data.department
 
@@ -383,34 +391,52 @@ def _get_report_info(request) -> _ReportLinesInfo:
     i_end = len(employee_requests)
 
     report_lines = []
-    while i < i_end:
-        employee_request: EmployeeRequest = employee_requests[i]
 
-        incoming_device = employee_request.device
-        outcoming_device = None
-        incoming_date = employee_request.get_date_info()
-        outcoming_date = None
-        next_employee_request = None
-        if (i + 1) < i_end:
-            next_employee_request: EmployeeRequest = employee_requests[i + 1]
-            next_date_info = next_employee_request.get_date_info()
-            if (employee_request.employee_id == next_employee_request.employee_id) \
-                    and (incoming_date.day == next_date_info.day):
-                outcoming_date = next_date_info
-                outcoming_device = next_employee_request.device
-                i += 1
+    if (time_type != _ReportTimeType.LATE) \
+            or (report_data.organization.timesheet_start is not None):
+        while i < i_end:
+            employee_request: EmployeeRequest = employee_requests[i]
 
-        line = _ReportLine(id=employee_request.id,
-                           employee=employee_request.employee,
-                           department=get_department(employee_request),
-                           incoming_date=incoming_date,
-                           incoming_device=incoming_device,
-                           outcoming_date=outcoming_date,
-                           outcoming_device=outcoming_device,
-                           utc=incoming_date.utc)
-        report_lines.append(line)
+            incoming_device = employee_request.device
+            outcoming_device = None
+            incoming_date = employee_request.get_date_info()
+            outcoming_date = None
+            next_employee_request = None
+            if (i + 1) < i_end:
+                next_employee_request: EmployeeRequest = employee_requests[i + 1]
+                next_date_info = next_employee_request.get_date_info()
+                if (employee_request.employee_id == next_employee_request.employee_id) \
+                        and (incoming_date.day == next_date_info.day):
+                    outcoming_date = next_date_info
+                    outcoming_device = next_employee_request.device
+                    i += 1
 
-        i += 1
+            line = _ReportLine(id=employee_request.id,
+                               employee=employee_request.employee,
+                               department=get_department(employee_request),
+                               incoming_date=incoming_date,
+                               incoming_device=incoming_device,
+                               outcoming_date=outcoming_date,
+                               outcoming_device=outcoming_device,
+                               utc=incoming_date.utc)
+
+            if time_type == _ReportTimeType.LATE:
+                incoming_time_as_duration = date_utils.str_to_duration(
+                    incoming_date.time)
+                start_as_duration = report_data.organization.timesheet_start_as_duration
+                if incoming_time_as_duration > start_as_duration:
+                    report_lines.append(line)
+
+                if next_employee_request is not None:
+                    while ((i + 1) < i_end) and (incoming_date.day == next_date_info.day) \
+                            and (employee_request.employee_id == next_employee_request.employee_id):
+                        i += 1
+                        next_employee_request: EmployeeRequest = employee_requests[i + 1]
+                        next_date_info = next_employee_request.get_date_info()
+            else:
+                report_lines.append(line)
+
+            i += 1
 
     page = request_utils.get_request_param(request, 'from', True)
     page_count = request_utils.get_request_param(request, 'count', True, 1)
