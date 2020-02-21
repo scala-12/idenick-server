@@ -411,6 +411,10 @@ def _get_report_info(request) -> _ReportLinesInfo:
                     outcoming_device = next_employee_request.device
                     i += 1
 
+            utc_value = incoming_date.utc
+            if (utc_value is None) and (outcoming_date is not None):
+                utc_value = outcoming_date.utc
+
             line = _ReportLine(id=employee_request.id,
                                employee=employee_request.employee,
                                department=get_department(employee_request),
@@ -418,7 +422,7 @@ def _get_report_info(request) -> _ReportLinesInfo:
                                incoming_device=incoming_device,
                                outcoming_date=outcoming_date,
                                outcoming_device=outcoming_device,
-                               utc=incoming_date.utc)
+                               utc=utc_value)
 
             if time_type == _ReportTimeType.LATE:
                 incoming_time_as_duration = date_utils.str_to_duration(
