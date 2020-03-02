@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from idenick_app.models import Login
+from idenick_app.classes.model_entities.login import Login
 from idenick_rest_api_v0.classes.utils import request_utils
 
 

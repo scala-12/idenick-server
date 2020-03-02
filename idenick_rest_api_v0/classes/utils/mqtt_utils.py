@@ -6,7 +6,7 @@ from typing import Optional
 
 import paho.mqtt.client as mqtt
 
-from idenick_app.models import Employee
+from idenick_app.classes.model_entities.employee import Employee
 from idenick_rest_api_v0.serializers import EmployeeSerializers
 
 USE_SSL = False
