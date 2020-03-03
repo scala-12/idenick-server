@@ -5,23 +5,12 @@ from django.contrib.auth.models import User
 from django.http.request import QueryDict
 from rest_framework import serializers
 
-from idenick_app.classes.model_entities.abstract_entries import AbstractEntry
-from idenick_app.classes.model_entities.department import Department
-from idenick_app.classes.model_entities.device import Device
-from idenick_app.classes.model_entities.device_group import DeviceGroup
-from idenick_app.classes.model_entities.employee import Employee
-from idenick_app.classes.model_entities.employee_request import EmployeeRequest
-from idenick_app.classes.model_entities.login import Login
-from idenick_app.classes.model_entities.organization import Organization
-from idenick_app.classes.model_entities.relations.device2organization import \
-    Device2Organization
-from idenick_app.classes.model_entities.relations.device_group2organization import \
-    DeviceGroup2Organization
-from idenick_app.classes.model_entities.relations.employee2department import \
-    Employee2Department
-from idenick_app.classes.model_entities.relations.employee2organization import \
-    Employee2Organization
 from idenick_app.classes.utils import date_utils
+from idenick_app.models import (AbstractEntry, Department, Device,
+                                Device2Organization, DeviceGroup,
+                                DeviceGroup2Organization, Employee,
+                                Employee2Department, Employee2Organization,
+                                EmployeeRequest, Login, Organization)
 
 
 class UserSerializer(serializers.ModelSerializer):

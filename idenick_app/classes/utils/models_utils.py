@@ -1,6 +1,6 @@
 """models"""
 
-from idenick_app.classes.model_entities.abstract_entries import AbstractEntry
+from idenick_app.models import AbstractEntry
 
 DELETED_STATUS = 'удален'
 

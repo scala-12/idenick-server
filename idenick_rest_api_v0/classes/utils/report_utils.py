@@ -9,22 +9,12 @@ from typing import List, Optional
 import xlsxwriter
 from django.http import FileResponse
 
-from idenick_app.classes.model_entities.department import Department
-from idenick_app.classes.model_entities.device import Device
-from idenick_app.classes.model_entities.device_group import DeviceGroup
-from idenick_app.classes.model_entities.employee import Employee
-from idenick_app.classes.model_entities.login import Login
-from idenick_app.classes.model_entities.organization import Organization
-from idenick_app.classes.model_entities.relations.device2organization import \
-    Device2Organization
-from idenick_app.classes.model_entities.relations.device_group2organization import \
-    DeviceGroup2Organization
-from idenick_app.classes.model_entities.relations.employee2department import \
-    Employee2Department
-from idenick_app.classes.model_entities.relations.employee2organization import \
-    Employee2Organization
 from idenick_app.classes.utils import date_utils
-from idenick_app.classes.model_entities.employee_request import EmployeeRequest
+from idenick_app.models import (Department, Device, Device2Organization,
+                                DeviceGroup, DeviceGroup2Organization,
+                                Employee, Employee2Department,
+                                Employee2Organization, EmployeeRequest, Login,
+                                Organization)
 from idenick_rest_api_v0.classes.utils import login_utils, request_utils, utils
 from idenick_rest_api_v0.serializers import (DepartmentSerializers,
                                              DeviceSerializers,

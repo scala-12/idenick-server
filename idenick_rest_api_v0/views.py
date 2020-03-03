@@ -14,21 +14,11 @@ from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from idenick_app.classes.model_entities.abstract_entries import AbstractEntry
-from idenick_app.classes.model_entities.department import Department
-from idenick_app.classes.model_entities.device import Device
-from idenick_app.classes.model_entities.device_group import DeviceGroup
-from idenick_app.classes.model_entities.employee import Employee
-from idenick_app.classes.model_entities.login import Login
-from idenick_app.classes.model_entities.organization import Organization
-from idenick_app.classes.model_entities.relations.device2organization import \
-    Device2Organization
-from idenick_app.classes.model_entities.relations.device_group2organization import \
-    DeviceGroup2Organization
-from idenick_app.classes.model_entities.relations.employee2department import \
-    Employee2Department
-from idenick_app.classes.model_entities.relations.employee2organization import \
-    Employee2Organization
+from idenick_app.models import (AbstractEntry, Department, Device,
+                                Device2Organization, DeviceGroup,
+                                DeviceGroup2Organization, Employee,
+                                Employee2Department, Employee2Organization,
+                                Login, Organization)
 from idenick_rest_api_v0.classes.utils import (login_utils, relation_utils,
                                                report_utils, request_utils,
                                                utils)

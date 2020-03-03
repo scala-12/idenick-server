@@ -9,7 +9,8 @@ from idenick_app.classes.model_entities.abstract_entries import AbstractEntry
 from idenick_app.classes.model_entities.indentification_tepmplate import \
     IndentificationTepmplate
 from idenick_app.classes.model_entities.organization import Organization
-from idenick_app.classes.model_entities.relations.employee2department import Employee2Department
+from idenick_app.classes.model_entities.relations.employee2department import \
+    Employee2Department
 from idenick_app.classes.model_entities.relations.employee2organization import \
     Employee2Organization
 from idenick_app.classes.utils.models_utils import get_related_entities_count
@@ -30,7 +31,7 @@ class Employee(AbstractEntry):
     def full_name(self):
         """return full employee name"""
         return '%s %s %s' % (self.last_name, self.first_name, self.patronymic)
-    
+
     def _get_identification_template(self, one_type: Optional[int] = None,
                                      many_types: Optional[List[int]] = None):
         """return employee has active identification template by type"""
