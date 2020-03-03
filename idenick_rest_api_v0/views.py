@@ -15,8 +15,8 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from idenick_app.models import (AbstractEntry, Department, Device,
-                                Device2Organization, DeviceGroup,
-                                DeviceGroup2Organization, Employee,
+                                Device2Organization, Checkpoint,
+                                Checkpoint2Organization, Employee,
                                 Employee2Department, Employee2Organization,
                                 Login, Organization)
 from idenick_rest_api_v0.classes.utils import (login_utils, relation_utils,
@@ -26,7 +26,7 @@ from idenick_rest_api_v0.classes.utils.mqtt_utils import BiometryType
 from idenick_rest_api_v0.classes.utils.mqtt_utils import \
     registrate_biometry as registrate_biometry_by_device
 from idenick_rest_api_v0.serializers import (DepartmentSerializers,
-                                             DeviceGroupSerializers,
+                                             CheckpointSerializers,
                                              DeviceSerializers,
                                              EmployeeSerializers,
                                              LoginSerializer,
@@ -279,13 +279,13 @@ class OrganizationViewSet(_AbstractViewSet):
             if name_filter is not None:
                 queryset = queryset.filter(name__icontains=name_filter)
 
-        device_group_filter = request_utils.get_request_param(
-            request, 'deviceGroup', True, base_filter=base_filter)
-        if device_group_filter is not None:
+        checkpoint_filter = request_utils.get_request_param(
+            request, 'checkpoint', True, base_filter=base_filter)
+        if checkpoint_filter is not None:
             organization_id_list = queryset.values_list('id', flat=True)
-            queryset = queryset.filter(id__in=DeviceGroup2Organization.objects.filter(
+            queryset = queryset.filter(id__in=Checkpoint2Organization.objects.filter(
                 organization_id__in=organization_id_list).filter(dropped_at=None).filter(
-                device_group_id=device_group_filter).values_list('organization', flat=True))
+                checkpoint_id=checkpoint_filter).values_list('organization', flat=True))
         device_filter = request_utils.get_request_param(
             request, 'device', True, base_filter=base_filter)
         if device_filter is not None:
@@ -893,10 +893,10 @@ class DeviceViewSet(_AbstractViewSet):
             if name_filter is not None:
                 queryset = queryset.filter(
                     Q(name__icontains=name_filter) | Q(mqtt__icontains=name_filter))
-        device_group_filter = request_utils.get_request_param(
-            request, 'deviceGroup', True, base_filter=base_filter)
-        if device_group_filter is not None:
-            queryset = queryset.filter(device_group_id=device_group_filter)
+        checkpoint_filter = request_utils.get_request_param(
+            request, 'checkpoint', True, base_filter=base_filter)
+        if checkpoint_filter is not None:
+            queryset = queryset.filter(checkpoint_id=checkpoint_filter)
 
         if organization_filter is not None:
             device_id_list = queryset.values_list('id', flat=True)
@@ -939,11 +939,11 @@ class DeviceViewSet(_AbstractViewSet):
                 result.update({'organization': OrganizationSerializers.ModelSerializer(
                     Organization.objects.get(id=login.organization_id)).data})
 
-            device_group_id = entity.get('device_group')
-            if device_group_id is not None:
-                result.update({'device_group':
-                               DeviceGroupSerializers.ModelSerializer(
-                                   DeviceGroup.objects.get(id=device_group_id)).data})
+            checkpoint_id = entity.get('checkpoint')
+            if checkpoint_id is not None:
+                result.update({'checkpoint':
+                               CheckpointSerializers.ModelSerializer(
+                                   Checkpoint.objects.get(id=checkpoint_id)).data})
 
         return request_utils.response(result)
 
@@ -1014,7 +1014,7 @@ class DeviceViewSet(_AbstractViewSet):
                 entity.description = update.description
                 entity.config = update.config
                 entity.timezone = update.timezone
-                entity.device_group = update.device_group
+                entity.checkpoint = update.checkpoint
                 entity.save()
                 result = self._response4update_n_create(data=entity)
             else:
@@ -1029,18 +1029,18 @@ class DeviceViewSet(_AbstractViewSet):
             and not Device.objects.filter(mqtt=data.get('mqtt')).filter(~Q(id=pk)).exists()
 
 
-class DeviceGroupViewSet(_AbstractViewSet):
+class CheckpointViewSet(_AbstractViewSet):
     def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
         result = None
         if (action == 'list') or (action == 'retrieve'):
-            result = DeviceGroupSerializers.ModelSerializer
+            result = CheckpointSerializers.ModelSerializer
         elif (action == 'create') or (action == 'partial_update'):
-            result = DeviceGroupSerializers.CreateSerializer
+            result = CheckpointSerializers.CreateSerializer
 
         return result
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
-        queryset = DeviceGroup.objects.all()
+        queryset = Checkpoint.objects.all()
 
         dropped_filter = get_deleted_filter(request, base_filter, with_dropped)
         if dropped_filter is _DeletedFilter.NON_DELETED.value:
@@ -1063,8 +1063,8 @@ class DeviceGroupViewSet(_AbstractViewSet):
                 request, 'organization', True, base_filter=base_filter)
         if organization_filter is not None:
             group_id_list = queryset.values_list('id', flat=True)
-            groups_queryset = DeviceGroup2Organization.objects.filter(
-                organization_id=organization_filter, device_group_id__in=group_id_list)
+            groups_queryset = Checkpoint2Organization.objects.filter(
+                organization_id=organization_filter, checkpoint_id__in=group_id_list)
 
             if (login.role == Login.ADMIN) \
                     or (dropped_filter is _DeletedFilter.NON_DELETED.value):
@@ -1073,7 +1073,7 @@ class DeviceGroupViewSet(_AbstractViewSet):
                 groups_queryset = groups_queryset.exclude(dropped_at=None)
 
             queryset = queryset.filter(
-                id__in=groups_queryset.values_list('device_group_id', flat=True))
+                id__in=groups_queryset.values_list('checkpoint_id', flat=True))
 
         return queryset
 
@@ -1095,7 +1095,7 @@ class DeviceGroupViewSet(_AbstractViewSet):
         serializer = serializer_class(data=request.data)
         result = None
         if serializer.is_valid():
-            group = DeviceGroup(**serializer.data)
+            group = Checkpoint(**serializer.data)
             group.save()
 
             login = login_utils.get_login(request.user)
@@ -1108,15 +1108,15 @@ class DeviceGroupViewSet(_AbstractViewSet):
                     request, 'organization', is_int=True)
 
             if organization is not None:
-                DeviceGroup2Organization.objects.create(
+                Checkpoint2Organization.objects.create(
                     **{'organization_id': organization,
-                       'device_group_id': group.id})
+                       'checkpoint_id': group.id})
 
             result = self._response4update_n_create(
                 data=group, code=status.HTTP_201_CREATED)
         else:
             result = self._response4update_n_create(
-                message=self._get_validation_error_msg(serializer.errors, DeviceGroup))
+                message=self._get_validation_error_msg(serializer.errors, Checkpoint))
 
         return result
 
@@ -1126,7 +1126,7 @@ class DeviceGroupViewSet(_AbstractViewSet):
         delete_restore_mode = (login.role == Login.ADMIN) \
             and (('delete' in request.data) or ('restore' in request.data))
 
-        entity: DeviceGroup = get_object_or_404(
+        entity: Checkpoint = get_object_or_404(
             self._get_queryset(request, with_dropped=delete_restore_mode), pk=pk)
 
         result = None
@@ -1137,7 +1137,7 @@ class DeviceGroupViewSet(_AbstractViewSet):
             result = None
 
             valid_result = self._validate_on_update(
-                pk, serializer_class, DeviceGroup, request.data)
+                pk, serializer_class, Checkpoint, request.data)
             serializer = valid_result.get('serializer')
             update = valid_result.get('update')
             if update is not None:
@@ -1148,12 +1148,12 @@ class DeviceGroupViewSet(_AbstractViewSet):
                 result = self._response4update_n_create(data=entity)
             else:
                 result = self._response4update_n_create(
-                    message=self._get_validation_error_msg(serializer.errors, DeviceGroup))
+                    message=self._get_validation_error_msg(serializer.errors, Checkpoint))
 
         return result
 
     def _alternative_valid(self, pk, data, errors, extra):
-        return (len(errors.keys()) == 1) and errors.keys().__contains__('name') and (errors.get('name')[0].code == 'unique') and not DeviceGroup.objects.filter(name=data.get('name')).filter(~Q(id=pk)).exists()
+        return (len(errors.keys()) == 1) and errors.keys().__contains__('name') and (errors.get('name')[0].code == 'unique') and not Checkpoint.objects.filter(name=data.get('name')).filter(~Q(id=pk)).exists()
 
 
 @api_view(['GET'])
@@ -1175,7 +1175,7 @@ def get_current_user(request):
 def get_counts(request):
     return Response({'organizations': Organization.objects.filter(dropped_at=None).count(),
                      'devices': Device.objects.filter(dropped_at=None).count(),
-                     'deviceGroups': DeviceGroup.objects.filter(dropped_at=None).count(),
+                     'checkpoints': Checkpoint.objects.filter(dropped_at=None).count(),
                      'employees': Employee.objects.filter(dropped_at=None).count()})
 
 

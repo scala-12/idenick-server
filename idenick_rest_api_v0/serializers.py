@@ -6,9 +6,9 @@ from django.http.request import QueryDict
 from rest_framework import serializers
 
 from idenick_app.classes.utils import date_utils
-from idenick_app.models import (AbstractEntry, Department, Device,
-                                Device2Organization, DeviceGroup,
-                                DeviceGroup2Organization, Employee,
+from idenick_app.models import (AbstractEntry, Checkpoint,
+                                Checkpoint2Organization, Department, Device,
+                                Device2Organization, Employee,
                                 Employee2Department, Employee2Organization,
                                 EmployeeRequest, Login, Organization)
 
@@ -80,7 +80,7 @@ class OrganizationSerializers:
         registrators_count = serializers.SerializerMethodField()
         employees_count = serializers.SerializerMethodField()
         devices_count = serializers.SerializerMethodField()
-        device_groups_count = serializers.SerializerMethodField()
+        checkpoints_count = serializers.SerializerMethodField()
         timezone = serializers.SerializerMethodField()
 
         def get_timezone(self, obj):
@@ -105,10 +105,10 @@ class OrganizationSerializers:
             return _get_related_entities_count(Device2Organization, {'organization_id': obj.id},
                                                Device, 'device')
 
-        def get_device_groups_count(self, obj):
-            return _get_related_entities_count(DeviceGroup2Organization,
-                                               {'organization_id': obj.id}, DeviceGroup,
-                                               'device_group')
+        def get_checkpoints_count(self, obj):
+            return _get_related_entities_count(Checkpoint2Organization,
+                                               {'organization_id': obj.id}, Checkpoint,
+                                               'checkpoint')
 
         class Meta:
             model = Organization
@@ -124,7 +124,7 @@ class OrganizationSerializers:
                 'registrators_count',
                 'employees_count',
                 'devices_count',
-                'device_groups_count',
+                'checkpoints_count',
                 'timezone',
                 'timesheet_start',
                 'timesheet_end',
@@ -403,7 +403,7 @@ class EmployeeRequestSerializers:
                 'device',
                 'employee_name',
                 'device_name',
-                'device_group_name',
+                'checkpoint_name',
                 'request_type',
                 'response_type',
                 'description',
@@ -412,12 +412,12 @@ class EmployeeRequestSerializers:
             ]
 
 
-class DeviceGroupSerializers:
+class CheckpointSerializers:
     """Serializers for device-model"""
     class CreateSerializer(serializers.ModelSerializer):
         """Serializer for create device-model"""
         class Meta:
-            model = DeviceGroup
+            model = Checkpoint
             fields = [
                 'name',
                 'rights',
@@ -442,7 +442,7 @@ class DeviceGroupSerializers:
 
         def get_devices_count(self, obj):
             queryset = Device.objects.filter(
-                device_group_id=obj.id, dropped_at=None)
+                checkpoint_id=obj.id, dropped_at=None)
 
             if 'organization' in self.context:
                 organization = self.context['organization']
@@ -454,12 +454,12 @@ class DeviceGroupSerializers:
             return queryset.count()
 
         def get_organizations_count(self, obj):
-            return _get_related_entities_count(DeviceGroup2Organization,
-                                               {'device_group_id': obj.id}, Organization,
+            return _get_related_entities_count(Checkpoint2Organization,
+                                               {'checkpoint_id': obj.id}, Organization,
                                                'organization')
 
         class Meta:
-            model = DeviceGroup
+            model = Checkpoint
             fields = [
                 'id',
                 'created_at',
@@ -477,14 +477,14 @@ class DeviceSerializers:
     class CreateSerializer(serializers.ModelSerializer):
         """Serializer for create device-model"""
         timezone = _TimeValueField()
-        device_group = serializers.SerializerMethodField()
+        checkpoint = serializers.SerializerMethodField()
 
-        def get_device_group(self, obj):
-            device_group = obj.get('device_group', '')
+        def get_checkpoint(self, obj):
+            checkpoint = obj.get('checkpoint', '')
             result = None
-            if isinstance(device_group, str):
-                result = None if (device_group == '') \
-                    else DeviceGroup.objects.get(id=int(device_group))
+            if isinstance(checkpoint, str):
+                result = None if (checkpoint == '') \
+                    else Checkpoint.objects.get(id=int(checkpoint))
             return result
 
         class Meta:
@@ -494,7 +494,7 @@ class DeviceSerializers:
                 'name',
                 'description',
                 'device_type',
-                'device_group',
+                'checkpoint',
                 'config',
                 'timezone',
             ]
@@ -502,14 +502,14 @@ class DeviceSerializers:
     class UpdateSerializer(serializers.ModelSerializer):
         """Serializer for update device-model"""
         timezone = _TimeValueField()
-        device_group = serializers.SerializerMethodField()
+        checkpoint = serializers.SerializerMethodField()
 
-        def get_device_group(self, obj):
-            device_group = obj.get('device_group', '')
+        def get_checkpoint(self, obj):
+            checkpoint = obj.get('checkpoint', '')
             result = None
-            if isinstance(device_group, str):
-                result = None if (device_group == '') \
-                    else DeviceGroup.objects.get(id=int(device_group))
+            if isinstance(checkpoint, str):
+                result = None if (checkpoint == '') \
+                    else Checkpoint.objects.get(id=int(checkpoint))
             return result
 
         class Meta:
@@ -517,7 +517,7 @@ class DeviceSerializers:
             fields = [
                 'name',
                 'description',
-                'device_group',
+                'checkpoint',
                 'config',
                 'timezone',
             ]
@@ -527,7 +527,7 @@ class DeviceSerializers:
 
         organizations_count = serializers.SerializerMethodField()
         timezone = serializers.SerializerMethodField()
-        device_group = serializers.PrimaryKeyRelatedField(read_only=True)
+        checkpoint = serializers.PrimaryKeyRelatedField(read_only=True)
 
         def get_timezone(self, obj):
             return None if obj.timezone is None else date_utils.duration_to_str(obj.timezone)
@@ -547,7 +547,7 @@ class DeviceSerializers:
                 'name',
                 'description',
                 'device_type',
-                'device_group',
+                'checkpoint',
                 'config',
                 'organizations_count',
                 'timezone',

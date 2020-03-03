@@ -7,13 +7,13 @@ from django.db.models.query_utils import Q
 from rest_framework import serializers
 
 from idenick_app.models import (AbstractSimpleEntry, Department, Device,
-                                Device2Organization, DeviceGroup,
-                                DeviceGroup2Organization, Employee,
+                                Device2Organization, Checkpoint,
+                                Checkpoint2Organization, Employee,
                                 Employee2Department, Employee2Organization,
                                 Login, Organization)
 from idenick_rest_api_v0.classes.utils import login_utils
 from idenick_rest_api_v0.serializers import (DepartmentSerializers,
-                                             DeviceGroupSerializers,
+                                             CheckpointSerializers,
                                              DeviceSerializers,
                                              EmployeeSerializers,
                                              OrganizationSerializers)
@@ -29,7 +29,7 @@ class EntityClassInfo:
 
 _ENTRY2CLAZZ_N_SERIALIZER = {
     Device: EntityClassInfo(Device, DeviceSerializers.ModelSerializer, 'device_id'),
-    DeviceGroup: EntityClassInfo(DeviceGroup, DeviceGroupSerializers.ModelSerializer, 'device_group_id'),
+    Checkpoint: EntityClassInfo(Checkpoint, CheckpointSerializers.ModelSerializer, 'checkpoint_id'),
     Organization: EntityClassInfo(Organization, OrganizationSerializers.ModelSerializer, 'organization_id'),
     Employee: EntityClassInfo(Employee, EmployeeSerializers.ModelSerializer, 'employee_id'),
     Department: EntityClassInfo(Department, DepartmentSerializers.ModelSerializer, 'department_id'),
@@ -37,7 +37,7 @@ _ENTRY2CLAZZ_N_SERIALIZER = {
 
 _CLASS_NAME2CLASS = {
     'devices': Device,
-    'deviceGroups': DeviceGroup,
+    'checkpoints': Checkpoint,
     'organizations': Organization,
     'employees': Employee,
     'departments': Department,
@@ -59,9 +59,9 @@ def _get_relation_clazz(info1: EntityClassInfo,
     clazz1 = info1.model
     clazz2 = info2.model
     result = None
-    if clazz1 is DeviceGroup:
+    if clazz1 is Checkpoint:
         if clazz2 is Organization:
-            result = DeviceGroup2Organization
+            result = Checkpoint2Organization
     elif clazz1 is Device:
         if clazz2 is Organization:
             result = Device2Organization
@@ -84,9 +84,9 @@ def get_relates(slave_info: EntityClassInfo,
 
     queryset = None
     relation_clazz = None
-    is_device_2_device_group = (master_info.model is DeviceGroup) and (
+    is_device_2_checkpoint = (master_info.model is Checkpoint) and (
         slave_info.model is Device)
-    if is_device_2_device_group:
+    if is_device_2_checkpoint:
         if intersections:
             queryset = slave_info.model.objects.filter(
                 **{master_info.key: master_id})
@@ -110,16 +110,16 @@ def get_relates(slave_info: EntityClassInfo,
     role = login.role
     if role in (Login.CONTROLLER, Login.REGISTRATOR):
         organization = login.organization_id
-        if is_device_2_device_group:
+        if is_device_2_checkpoint:
             organization_devices = Device2Organization.objects.filter(
                 organization_id=organization).values_list(slave_info.key, flat=True)
             queryset = queryset.filter(id__in=organization_devices)
 
             if intersections:
-                organization_device_groups = DeviceGroup2Organization.objects.filter(
+                organization_checkpoints = Checkpoint2Organization.objects.filter(
                     organization_id=organization).values_list(master_info.key, flat=True)
                 queryset = queryset\
-                    .filter(**{master_info.key + '__in': organization_device_groups})
+                    .filter(**{master_info.key + '__in': organization_checkpoints})
         elif relation_clazz is Employee2Department:
             if slave_info.model is Employee:
                 queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
@@ -161,13 +161,13 @@ def _add_or_remove_relations(request,
     success = getted_ids.difference(
         exists_ids) if adding_mode else getted_ids.intersection(exists_ids)
 
-    if (master_info.model is DeviceGroup) and (slave_info.model is Device):
+    if (master_info.model is Checkpoint) and (slave_info.model is Device):
         if adding_mode:
             slave_info.model.objects.filter(
-                id__in=success).update(device_group_id=master_id)
+                id__in=success).update(checkpoint_id=master_id)
         else:
             slave_info.model.objects.filter(id__in=success,
-                                            device_group_id=master_id).update(device_group_id=None)
+                                            checkpoint_id=master_id).update(checkpoint_id=None)
     else:
         master_key = master_info.key
         slave_key = slave_info.key
@@ -188,13 +188,13 @@ def _add_or_remove_relations(request,
                 _slave = {'model': None, 'ids': None}
                 if master_info.model is Organization:
                     _master.update(model=Organization, id=master_id)
-                    _slave.update(model=DeviceGroup,
+                    _slave.update(model=Checkpoint,
                                   ids=set(Device.objects.filter(id__in=getted_ids)
-                                          .exclude(device_group=None)
-                                          .values_list('device_group_id', flat=True)))
+                                          .exclude(checkpoint=None)
+                                          .values_list('checkpoint_id', flat=True)))
                 else:
-                    _master.update(model=DeviceGroup, id=Device.objects.filter(id=master_id)
-                                   .values_list('device_group_id', flat=True)[0])
+                    _master.update(model=Checkpoint, id=Device.objects.filter(id=master_id)
+                                   .values_list('checkpoint_id', flat=True)[0])
                     _slave.update(model=Organization, ids=getted_ids)
 
                 if (_master.get('id') is not None) and (len(_slave.get('ids')) > 0):

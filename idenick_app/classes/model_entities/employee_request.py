@@ -32,9 +32,9 @@ class EmployeeRequest(models.Model):
     templatesid = models.IntegerField(editable=False, null=True)
 
     @property
-    def device_group_name(self):
-        return self.device.device_group.name if (self.device is not None) \
-            and (self.device.device_group is not None) \
+    def checkpoint_name(self):
+        return self.device.checkpoint.name if (self.device is not None) \
+            and (self.device.checkpoint is not None) \
             else None
 
     @property

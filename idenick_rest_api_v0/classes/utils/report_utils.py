@@ -11,7 +11,7 @@ from django.http import FileResponse
 
 from idenick_app.classes.utils import date_utils
 from idenick_app.models import (Department, Device, Device2Organization,
-                                DeviceGroup, DeviceGroup2Organization,
+                                Checkpoint, Checkpoint2Organization,
                                 Employee, Employee2Department,
                                 Employee2Organization, EmployeeRequest, Login,
                                 Organization)
@@ -28,7 +28,7 @@ class _ReportType(Enum):
     DEPARTMENT = 'DEPARTMENT'
     ORGANIZATION = 'ORGANIZATION'
     DEVICE = 'DEVICE'
-    DEVICE_GROUP = 'DEVICE_GROUP'
+    CHECKPOINT = 'CHECKPOINT'
     ALL = 'ALL'
 
 
@@ -131,14 +131,14 @@ def _get_employees_requests(request,
                     device_id=entity_id)
             else:
                 report_queryset = EmployeeRequest.objects.none()
-        elif entity_type == _ReportType.DEVICE_GROUP:
-            name = 'device_groups '
+        elif entity_type == _ReportType.Checkpoint:
+            name = 'checkpoints '
 
             if (organization_filter is None) \
-                    or DeviceGroup2Organization.objects.filter(device_group_id=entity_id) \
+                    or Checkpoint2Organization.objects.filter(checkpoint_id=entity_id) \
                 .filter(organization_id=organization_filter).exists():
                 devices_ids = Device.objects.filter(
-                    device_group_id=entity_id).values_list('id', flat=True)
+                    checkpoint_id=entity_id).values_list('id', flat=True)
 
                 report_queryset = report_queryset.filter(
                     device_id__in=devices_ids)
@@ -187,7 +187,7 @@ def _get_employees_requests(request,
 
 class _HeaderName(Enum):
     """set of headers for report file"""
-    DEVICE_GROUP = 'Проходная'
+    CHECKPOINT = 'Проходная'
     MONTH = 'Месяц'
     DATE = 'Дата'
     WEEK_DAY = 'д.н.'
@@ -321,9 +321,9 @@ class _ReportLine:
                  department: Optional[Department],
                  utc: str,
                  incoming_date: date_utils.DateInfo,
-                 incoming_device: Optional[DeviceGroup] = None,
+                 incoming_device: Optional[Checkpoint] = None,
                  outcoming_date: Optional[date_utils.DateInfo] = None,
-                 outcoming_device: Optional[DeviceGroup] = None,
+                 outcoming_device: Optional[Checkpoint] = None,
                  ):
         self.id = id
         self.employee = employee
@@ -348,17 +348,17 @@ class _ReportLine:
         self.outcoming_time = outcoming_time
         self.time_count = time_count
 
-        device_groups = None
+        checkpoints = None
         if (incoming_device is not None) \
-                and (incoming_device.device_group is not None):
-            device_groups = incoming_device.device_group.name
+                and (incoming_device.checkpoint is not None):
+            checkpoints = incoming_device.checkpoint.name
         else:
-            device_groups = '-'
+            checkpoints = '-'
 
         if (outcoming_device is not None) \
-                and (outcoming_device.device_group is not None):
-            device_groups += ' / ' + outcoming_device.device_group.name
-        self.device_groups = device_groups
+                and (outcoming_device.checkpoint is not None):
+            checkpoints += ' / ' + outcoming_device.checkpoint.name
+        self.checkpoints = checkpoints
 
 
 @dataclass
@@ -500,7 +500,7 @@ class _ReportFileWriter:
     """class for creation with report file"""
     HEADERS = [
         _HeaderInfo('Место и дата регистрации', [
-            _SubHeaderInfo(_HeaderName.DEVICE_GROUP),
+            _SubHeaderInfo(_HeaderName.CHECKPOINT),
             _SubHeaderInfo(_HeaderName.MONTH),
             _SubHeaderInfo(_HeaderName.DATE),
             _SubHeaderInfo(_HeaderName.WEEK_DAY),
@@ -564,7 +564,7 @@ class _ReportFileWriter:
     def write_lines(self, info: _ReportLinesInfo):
         for line in info.lines:
             self._write_cell(
-                self._row, _HeaderName.DEVICE_GROUP, line.device_groups)
+                self._row, _HeaderName.checkpoint, line.checkpoints)
 
             self._write_cell(self._row, _HeaderName.MONTH, line.month)
             self._write_cell(self._row, _HeaderName.DATE, line.date)

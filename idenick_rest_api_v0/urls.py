@@ -4,7 +4,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from idenick_rest_api_v0.views import (ControllerViewSet, DepartmentViewSet,
-                                       DeviceGroupViewSet, DeviceViewSet,
+                                       CheckpointViewSet, DeviceViewSet,
                                        EmployeeViewSet, OrganizationViewSet,
                                        RegistratorViewSet, UserViewSet,
                                        add_relation, get_counts,
@@ -20,7 +20,7 @@ ROUTER.register(r'registrators', RegistratorViewSet, basename='Login')
 ROUTER.register(r'controllers', ControllerViewSet, basename='Login')
 ROUTER.register(r'users', UserViewSet, basename='Login')
 ROUTER.register(r'devices', DeviceViewSet, basename='Device')
-ROUTER.register(r'deviceGroups', DeviceGroupViewSet, basename='DeviceGroup')
+ROUTER.register(r'checkpoints', CheckpointViewSet, basename='Checkpoint')
 
 urlpatterns = ROUTER.urls
 

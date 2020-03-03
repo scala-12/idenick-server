@@ -1,12 +1,12 @@
-"""Device group model"""
+"""checkpoint model"""
 from django.db import models
 
 from idenick_app.classes.model_entities.abstract_entries import (
     AbstractEntry, EntryWithTimezone)
 
 
-class DeviceGroup(AbstractEntry):
-    """Device group model"""
+class Checkpoint(AbstractEntry):
+    """Checkpoint model"""
     name = models.CharField(max_length=64, unique=True,
                             verbose_name='название проходной', )
     rights = models.IntegerField(default=0)
