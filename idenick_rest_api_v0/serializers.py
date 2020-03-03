@@ -250,61 +250,34 @@ class EmployeeSerializers():
 
     class ModelSerializer(serializers.ModelSerializer):
         """Serializer for show employee-model"""
-
-        organizations_count = serializers.SerializerMethodField()
         departments_count = serializers.SerializerMethodField()
         timesheet_start = serializers.SerializerMethodField()
         timesheet_end = serializers.SerializerMethodField()
 
-        def get_timesheet_start(self, obj):
+        def get_timesheet_start(self, obj: Employee):
             result = None
             if 'organization' in self.context:
                 organization_id = self.context['organization']
-                if organization_id is not None:
-                    relations = Employee2Organization.objects.filter(
-                        organization=organization_id, employee=obj.id)
-
-                    if relations.exists():
-                        result = relations.first().timesheet_start
-
-                    if result is None:
-                        result = Organization.objects.get(
-                            id=organization_id).timesheet_start
+                result = obj.get_timesheet_start(
+                    organization_id=organization_id)
 
             return result
 
-        def get_timesheet_end(self, obj):
+        def get_timesheet_end(self, obj: Employee):
             result = None
             if 'organization' in self.context:
                 organization_id = self.context['organization']
-                if organization_id is not None:
-                    relations = Employee2Organization.objects.filter(
-                        organization=organization_id, employee=obj.id)
-
-                    if relations.exists():
-                        result = relations.first().timesheet_end
-
-                    if result is None:
-                        result = Organization.objects.get(
-                            id=organization_id).timesheet_end
+                result = obj.get_timesheet_end(
+                    organization_id=organization_id)
 
             return result
 
-        def get_organizations_count(self, obj):
-            return _get_related_entities_count(Employee2Organization, {'employee_id': obj.id},
-                                               Organization, 'organization')
-
-        def get_departments_count(self, obj):
-            queryset = Employee2Department.objects.filter(
-                employee_id=obj.id, department__dropped_at=None, dropped_at=None)
-
+        def get_departments_count(self, obj: Employee):
+            organization = None
             if 'organization' in self.context:
                 organization = self.context['organization']
-                if organization is not None:
-                    queryset = queryset.filter(
-                        department__organization=organization)
 
-            return queryset.count()
+            return obj.get_departments_count(organization_id=organization)
 
         class Meta:
             model = Employee

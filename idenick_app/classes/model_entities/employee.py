@@ -9,6 +9,7 @@ from idenick_app.classes.model_entities.abstract_entries import AbstractEntry
 from idenick_app.classes.model_entities.indentification_tepmplate import \
     IndentificationTepmplate
 from idenick_app.classes.model_entities.organization import Organization
+from idenick_app.classes.model_entities.relations.employee2department import Employee2Department
 from idenick_app.classes.model_entities.relations.employee2organization import \
     Employee2Organization
 from idenick_app.classes.utils.models_utils import get_related_entities_count
@@ -29,10 +30,10 @@ class Employee(AbstractEntry):
     def full_name(self):
         """return full employee name"""
         return '%s %s %s' % (self.last_name, self.first_name, self.patronymic)
-
-    def _has_identification_template(self, one_type: Optional[int] = None,
+    
+    def _get_identification_template(self, one_type: Optional[int] = None,
                                      many_types: Optional[List[int]] = None):
-        """return true if employee has active identification template by type"""
+        """return employee has active identification template by type"""
         result = IndentificationTepmplate.objects.filter(
             employee_id=self.id, dropped_at=None,)
         if one_type is not None:
@@ -42,12 +43,83 @@ class Employee(AbstractEntry):
         else:
             result = None
 
-        return result.exists()
+        return result
+
+    def _has_identification_template(self, one_type: Optional[int] = None,
+                                     many_types: Optional[List[int]] = None) -> bool:
+        """return true if employee has active identification template by type"""
+        templates = self._get_identification_template()
+        return False if templates is None else templates.exists()
 
     @property
     def has_card(self) -> bool:
         """return true if employee has active card identification"""
-        return self._has_identification_template(one_type=algorithm_constants.CARD_ALGORITHM)
+        return self._has_identification_template(
+            one_type=algorithm_constants.CARD_ALGORITHM)
+
+    @property
+    def organizations_count(self) -> int:
+        return get_related_entities_count(Employee2Organization, {'employee_id': self.id},
+                                          Organization, 'organization')
+
+    def get_departments_count(self,
+                              organization: Optional[Organization] = None,
+                              organization_id: Optional[int] = None) -> int:
+        org_id = None
+        if organization is not None:
+            org_id = organization.id
+        else:
+            org_id = organization_id
+
+        queryset = Employee2Department.objects.filter(
+            employee_id=self.id, department__dropped_at=None, dropped_at=None)
+        if org_id is not None:
+            queryset = queryset.filter(
+                department__organization=org_id)
+
+        return queryset.count()
+
+    def _get_timesheet(self,
+                       is_start: bool,
+                       organization: Optional[Organization] = None,
+                       organization_id: Optional[int] = None):
+        org_id = None
+        if organization is not None:
+            org_id = organization.id
+        else:
+            org_id = organization_id
+
+        result = None
+        if org_id is not None:
+            relations = Employee2Organization.objects.filter(
+                organization=org_id, employee=self.id)
+
+            if relations.exists():
+                relation = relations.first()
+                result = (relation.timesheet_start) if is_start else (
+                    relation.timesheet_end)
+
+            if result is None:
+                org = Organization.objects.get(
+                    id=org_id)
+                result = (org.timesheet_start) if is_start else (
+                    org.timesheet_end)
+
+        return result
+
+    def get_timesheet_start(self,
+                            organization: Optional[Organization] = None,
+                            organization_id: Optional[int] = None):
+        return self._get_timesheet(True,
+                                   organization=organization,
+                                   organization_id=organization_id)
+
+    def get_timesheet_end(self,
+                          organization: Optional[Organization] = None,
+                          organization_id: Optional[int] = None):
+        return self._get_timesheet(False,
+                                   organization=organization,
+                                   organization_id=organization_id)
 
     @property
     def has_finger(self) -> bool:
