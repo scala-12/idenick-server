@@ -49,7 +49,10 @@ class _ErrorMessage(Enum):
 
 
 class _AbstractViewSet(viewsets.ViewSet):
-    _serializer_classes: Dict[str, serializers.ModelSerializer] = None
+
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False) -> \
+            serializers.ModelSerializer:
+        pass
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         # TODO: описание base_filter
@@ -88,7 +91,7 @@ class _AbstractViewSet(viewsets.ViewSet):
         else:
             result = Response(
                 {
-                    'data': self._serializer_classes.get('retrieve')(data).data,
+                    'data': self.get_serializer_by_action('retrieve')(data).data,
                     'success': True
                 },
                 headers={'Access-Control-Allow-Origin': '*',
@@ -96,11 +99,11 @@ class _AbstractViewSet(viewsets.ViewSet):
                 status=code)
         return result
 
-    def get_serializer_class(self) -> serializers.ModelSerializer:
+    def get_current_serializer(self, is_full: Optional[bool] = False) -> serializers.ModelSerializer:
         """return serializer by action"""
-        return self._serializer_classes.get(self.action)
+        return self.get_serializer_by_action(action=self.action, is_full=is_full)
 
-    def _list_data(self, request, queryset=None):
+    def _list_data(self, request, queryset=None, is_full: Optional[bool] = False):
         _queryset = self._get_queryset(request) if (
             queryset is None) else queryset
 
@@ -118,17 +121,17 @@ class _AbstractViewSet(viewsets.ViewSet):
         if ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
             organization = login.organization_id
 
-        serializer = self.get_serializer_class()(paginated_queryset, many=True, context={
+        serializer = self.get_current_serializer(is_full=is_full)(paginated_queryset, many=True, context={
             'organization': organization})
 
         return {'data': serializer.data,
                 'baseCount': self._get_queryset(request, base_filter=True).count(),
                 'filteredCount': _queryset.count()}
 
-    def _retrieve(self, request, pk=None, queryset=None):
-        return request_utils.response(self._retrieve_data(request, pk, queryset))
+    def _retrieve(self, request, pk=None, queryset=None, is_full: Optional[bool] = False):
+        return request_utils.response(self._retrieve_data(request, pk, queryset, is_full=is_full))
 
-    def _retrieve_data(self, request, pk, queryset=None):
+    def _retrieve_data(self, request, pk, queryset=None, is_full: Optional[bool] = False):
         _queryset = self._get_queryset(request, with_dropped=('withDeleted' in request.GET)) if (
             queryset is None) else queryset
         entity = get_object_or_404(_queryset, pk=pk)
@@ -137,7 +140,7 @@ class _AbstractViewSet(viewsets.ViewSet):
         login = login_utils.get_login(request.user)
         if ((login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR)):
             organization = login.organization_id
-        serializer = self.get_serializer_class()(entity, context={
+        serializer = self.get_current_serializer(is_full=is_full)(entity, context={
             'organization': organization})
 
         return {'data': serializer.data}
@@ -263,12 +266,14 @@ def get_deleted_filter(request, base_filter: bool, with_dropped: bool) -> _Delet
 
 
 class OrganizationViewSet(_AbstractViewSet):
-    _serializer_classes = {
-        'list': OrganizationSerializers.ModelSerializer,
-        'retrieve': OrganizationSerializers.ModelSerializer,
-        'create': OrganizationSerializers.CreateSerializer,
-        'partial_update': OrganizationSerializers.CreateSerializer,
-    }
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
+        result = None
+        if (action == 'list') or (action == 'retrieve'):
+            result = OrganizationSerializers.ModelSerializer
+        elif (action == 'create') or (action == 'partial_update'):
+            result = OrganizationSerializers.CreateSerializer
+
+        return result
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Organization.objects.all()
@@ -320,7 +325,7 @@ class OrganizationViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator(Login.ADMIN)
     def create(self, request):
-        serializer_class = self.get_serializer_class()
+        serializer_class = self.get_current_serializer()
         serializer = serializer_class(data=request.data)
         result = None
         if serializer.is_valid():
@@ -348,7 +353,7 @@ class OrganizationViewSet(_AbstractViewSet):
         if delete_restore_mode:
             result = self._delete_or_restore(request, entity)
         else:
-            serializer_class = self.get_serializer_class()
+            serializer_class = self.get_current_serializer()
             result = None
 
             valid_result = self._validate_on_update(
@@ -378,12 +383,16 @@ class OrganizationViewSet(_AbstractViewSet):
 
 
 class DepartmentViewSet(_AbstractViewSet):
-    _serializer_classes = {
-        'list': DepartmentSerializers.ModelSerializer,
-        'retrieve': DepartmentSerializers.ModelSerializer,
-        'create': DepartmentSerializers.CreateSerializer,
-        'partial_update': DepartmentSerializers.UpdateSerializer,
-    }
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
+        result = None
+        if (action == 'list') or (action == 'retrieve'):
+            result = DepartmentSerializers.ModelSerializer
+        elif action == 'create':
+            result = DepartmentSerializers.CreateSerializer
+        elif action == 'partial_update':
+            result = DepartmentSerializers.UpdateSerializer
+
+        return result
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Department.objects.all()
@@ -437,7 +446,7 @@ class DepartmentViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator(Login.REGISTRATOR)
     def create(self, request):
-        serializer_class = self.get_serializer_class()
+        serializer_class = self.get_current_serializer()
 
         serializer = serializer_class(data=request.data, context={
             'organization': login_utils.get_login(request.user).organization_id})
@@ -471,7 +480,7 @@ class DepartmentViewSet(_AbstractViewSet):
         if delete_restore_mode:
             result = self._delete_or_restore(request, entity)
         else:
-            serializer_class = self.get_serializer_class()
+            serializer_class = self.get_current_serializer()
             result = None
 
             department_data = QueryDict('', mutable=True)
@@ -508,12 +517,14 @@ class DepartmentViewSet(_AbstractViewSet):
 
 
 class EmployeeViewSet(_AbstractViewSet):
-    _serializer_classes = {
-        'list': EmployeeSerializers.ModelSerializer,
-        'retrieve': EmployeeSerializers.ModelSerializer,
-        'create': EmployeeSerializers.CreateSerializer,
-        'partial_update': EmployeeSerializers.CreateSerializer,
-    }
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
+        result = None
+        if (action == 'list') or (action == 'retrieve'):
+            result = EmployeeSerializers.ModelSerializer
+        elif (action == 'create') or (action == 'partial_update'):
+            result = EmployeeSerializers.CreateSerializer
+
+        return result
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Employee.objects.all()
@@ -587,7 +598,7 @@ class EmployeeViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator()
     def retrieve(self, request, pk):
-        result = self._retrieve_data(request, pk)
+        result = self._retrieve_data(request, pk, is_full=True)
 
         login = login_utils.get_login(request.user)
         if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
@@ -606,9 +617,6 @@ class EmployeeViewSet(_AbstractViewSet):
                     login.organization).data
 
                 result.update({'organization': organization})
-
-        if 'photo' in request.GET:
-            pass
 
         return request_utils.response(result)
 
@@ -636,7 +644,7 @@ class EmployeeViewSet(_AbstractViewSet):
                     else:
                         result = delete_or_restore_result
         else:
-            serializer_class = self.get_serializer_class()
+            serializer_class = self.get_current_serializer()
             serializer = serializer_class(data=request.data)
             if serializer.is_valid():
                 data = serializer.data
@@ -663,7 +671,7 @@ class EmployeeViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def create(self, request):
-        serializer_class = self.get_serializer_class()
+        serializer_class = self.get_current_serializer()
         serializer = serializer_class(data=request.data)
         result = None
 
@@ -693,12 +701,16 @@ class EmployeeViewSet(_AbstractViewSet):
 
 
 class _UserViewSet(_AbstractViewSet):
-    _serializer_classes = {
-        'list': LoginSerializer.FullSerializer,
-        'retrieve': LoginSerializer.FullSerializer,
-        'create': LoginSerializer.CreateSerializer,
-        'partial_update': LoginSerializer.UpdateSerializer,
-    }
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
+        result = None
+        if (action == 'list') or (action == 'retrieve'):
+            result = LoginSerializer.FullSerializer
+        elif action == 'create':
+            result = LoginSerializer.CreateSerializer
+        elif action == 'partial_update':
+            result = LoginSerializer.UpdateSerializer
+
+        return result
 
     def _user_role(self, request):
         return Login.REGISTRATOR if (login_utils.get_login(request.user).role == Login.ADMIN) \
@@ -761,7 +773,7 @@ class _UserViewSet(_AbstractViewSet):
         return request_utils.response(result)
 
     def _create(self, request):
-        serializer_class = self.get_serializer_class()
+        serializer_class = self.get_current_serializer()
         serializer = serializer_class(data=request.data)
         result = None
 
@@ -803,7 +815,7 @@ class _UserViewSet(_AbstractViewSet):
         login = get_object_or_404(Login.objects.all(), pk=pk)
         user = login.user
 
-        serializer_class = self.get_serializer_class()
+        serializer_class = self.get_current_serializer()
         serializer = serializer_class(request.data)
         update = serializer.data
         if update.get('first_name', '') != '':
@@ -855,12 +867,16 @@ class ControllerViewSet(_UserViewSet):
 
 
 class DeviceViewSet(_AbstractViewSet):
-    _serializer_classes = {
-        'list': DeviceSerializers.ModelSerializer,
-        'retrieve': DeviceSerializers.ModelSerializer,
-        'create': DeviceSerializers.CreateSerializer,
-        'partial_update': DeviceSerializers.UpdateSerializer,
-    }
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
+        result = None
+        if (action == 'list') or (action == 'retrieve'):
+            result = DeviceSerializers.ModelSerializer
+        elif action == 'create':
+            result = DeviceSerializers.CreateSerializer
+        elif action == 'partial_update':
+            result = DeviceSerializers.UpdateSerializer
+
+        return result
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = Device.objects.all()
@@ -944,7 +960,7 @@ class DeviceViewSet(_AbstractViewSet):
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def create(self, request):
         login = login_utils.get_login(request.user)
-        serializer_class = self.get_serializer_class()
+        serializer_class = self.get_current_serializer()
         device_data = request.data
         serializer = serializer_class(data=device_data)
         result = None
@@ -997,7 +1013,7 @@ class DeviceViewSet(_AbstractViewSet):
                     else:
                         result = delete_or_restore_result
         else:
-            serializer_class = self.get_serializer_class()
+            serializer_class = self.get_current_serializer()
 
             valid_result = self._validate_on_update(
                 pk, serializer_class, Device, request.data)
@@ -1024,12 +1040,14 @@ class DeviceViewSet(_AbstractViewSet):
 
 
 class DeviceGroupViewSet(_AbstractViewSet):
-    _serializer_classes = {
-        'list': DeviceGroupSerializers.ModelSerializer,
-        'retrieve': DeviceGroupSerializers.ModelSerializer,
-        'create': DeviceGroupSerializers.CreateSerializer,
-        'partial_update': DeviceGroupSerializers.CreateSerializer,
-    }
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
+        result = None
+        if (action == 'list') or (action == 'retrieve'):
+            result = DeviceGroupSerializers.ModelSerializer
+        elif (action == 'create') or (action == 'partial_update'):
+            result = DeviceGroupSerializers.CreateSerializer
+
+        return result
 
     def _get_queryset(self, request, base_filter=False, with_dropped=False):
         queryset = DeviceGroup.objects.all()
@@ -1083,7 +1101,7 @@ class DeviceGroupViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def create(self, request):
-        serializer_class = self.get_serializer_class()
+        serializer_class = self.get_current_serializer()
         serializer = serializer_class(data=request.data)
         result = None
         if serializer.is_valid():
@@ -1125,7 +1143,7 @@ class DeviceGroupViewSet(_AbstractViewSet):
         if delete_restore_mode:
             result = self._delete_or_restore(request, entity)
         else:
-            serializer_class = self.get_serializer_class()
+            serializer_class = self.get_current_serializer()
             result = None
 
             valid_result = self._validate_on_update(
