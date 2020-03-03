@@ -295,6 +295,28 @@ class EmployeeSerializers():
                 'has_face',
                 'has_finger',
                 'has_card',
+                'has_photo',
+            ]
+
+    class FullModelSerializer(ModelSerializer):
+        class Meta:
+            model = Employee
+            fields = [
+                'id',
+                'created_at',
+                'dropped_at',
+                'last_name',
+                'first_name',
+                'patronymic',
+                'organizations_count',
+                'departments_count',
+                'timesheet_start',
+                'timesheet_end',
+                'has_face',
+                'has_finger',
+                'has_card',
+                'has_photo',
+                'photo',
             ]
 
 

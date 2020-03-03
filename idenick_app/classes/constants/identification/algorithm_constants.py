@@ -4,6 +4,7 @@ FINGER_ALGORITHM_1 = 2
 FINGER_ALGORITHM_2 = 3
 FACE_ALGORITHM = 4
 CARD_ALGORITHM = 5
+EMPLOYEE_AVATAR = 10
 
 ALGORITHM_TYPE = [
     (UNKNOWN_ALGORITHM, 'Не существующий тип пакета'),
@@ -13,6 +14,7 @@ ALGORITHM_TYPE = [
     (FINGER_ALGORITHM_2, 'По отпечатку, не реализован в настоящей сборке'),
 
     (FACE_ALGORITHM, 'Не распознавание лиц'),
+    (EMPLOYEE_AVATAR, 'Фото сотрудника, не используется для авторизации'),
 
     (CARD_ALGORITHM, 'По номеру карты, дополнительный используемый алгоритм идентификации'),
 ]

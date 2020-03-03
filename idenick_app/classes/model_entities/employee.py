@@ -58,6 +58,18 @@ class Employee(AbstractEntry):
             one_type=algorithm_constants.CARD_ALGORITHM)
 
     @property
+    def has_photo(self) -> bool:
+        """return true if employee has active photo avatar"""
+        return self._has_identification_template(
+            one_type=algorithm_constants.EMPLOYEE_AVATAR)
+
+    @property
+    def photo(self) -> bool:
+        """return employee photo if exists"""
+        templates = self._get_identification_template()
+        return None if (templates is None) or (not templates.exists()) else templates.first()
+
+    @property
     def organizations_count(self) -> int:
         return get_related_entities_count(Employee2Organization, {'employee_id': self.id},
                                           Organization, 'organization')
