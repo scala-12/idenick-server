@@ -1,4 +1,5 @@
 """employee model"""
+import base64
 import uuid
 from typing import List, Optional
 
@@ -34,8 +35,8 @@ class Employee(AbstractEntry):
         """return full employee name"""
         return '%s %s %s' % (self.last_name, self.first_name, self.patronymic)
 
-    def _get_identification_template(self, one_type: Optional[int] = None,
-                                     many_types: Optional[List[int]] = None):
+    def _get_identification_templates(self, one_type: Optional[int] = None,
+                                      many_types: Optional[List[int]] = None):
         """return employee has active identification template by type"""
         result = IndentificationTepmplate.objects.filter(
             employee_id=self.id, dropped_at=None,)
@@ -51,7 +52,8 @@ class Employee(AbstractEntry):
     def _has_identification_template(self, one_type: Optional[int] = None,
                                      many_types: Optional[List[int]] = None) -> bool:
         """return true if employee has active identification template by type"""
-        templates = self._get_identification_template()
+        templates = self._get_identification_templates(
+            one_type=one_type, many_types=many_types)
         return False if templates is None else templates.exists()
 
     @property
@@ -69,8 +71,10 @@ class Employee(AbstractEntry):
     @property
     def photo(self) -> bool:
         """return employee photo if exists"""
-        templates = self._get_identification_template()
-        return None if (templates is None) or (not templates.exists()) else templates.first()
+        templates = self._get_identification_templates(
+            one_type=algorithm_constants.EMPLOYEE_AVATAR)
+        return None if (templates is None) or (not templates.exists()) \
+            else base64.b64encode(templates.first().template.strip()).decode()
 
     @property
     def organizations_count(self) -> int:

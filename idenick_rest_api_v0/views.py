@@ -14,9 +14,9 @@ from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from idenick_app.models import (AbstractEntry, Department, Device,
-                                Device2Organization, Checkpoint,
-                                Checkpoint2Organization, Employee,
+from idenick_app.models import (AbstractEntry, Checkpoint,
+                                Checkpoint2Organization, Department, Device,
+                                Device2Organization, Employee,
                                 Employee2Department, Employee2Organization,
                                 Login, Organization)
 from idenick_rest_api_v0.classes.utils import (login_utils, relation_utils,
@@ -25,8 +25,8 @@ from idenick_rest_api_v0.classes.utils import (login_utils, relation_utils,
 from idenick_rest_api_v0.classes.utils.mqtt_utils import BiometryType
 from idenick_rest_api_v0.classes.utils.mqtt_utils import \
     registrate_biometry as registrate_biometry_by_device
-from idenick_rest_api_v0.serializers import (DepartmentSerializers,
-                                             CheckpointSerializers,
+from idenick_rest_api_v0.serializers import (CheckpointSerializers,
+                                             DepartmentSerializers,
                                              DeviceSerializers,
                                              EmployeeSerializers,
                                              LoginSerializer,
@@ -507,10 +507,11 @@ class DepartmentViewSet(_AbstractViewSet):
 
 
 class EmployeeViewSet(_AbstractViewSet):
-    def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False):
         result = None
         if (action == 'list') or (action == 'retrieve'):
-            result = EmployeeSerializers.ModelSerializer
+            result = EmployeeSerializers.FullModelSerializer if is_full \
+                else EmployeeSerializers.ModelSerializer
         elif (action == 'create') or (action == 'partial_update'):
             result = EmployeeSerializers.CreateSerializer
 
@@ -588,7 +589,8 @@ class EmployeeViewSet(_AbstractViewSet):
 
     @login_utils.login_check_decorator()
     def retrieve(self, request, pk):
-        result = self._retrieve_data(request, pk, is_full=True)
+        full_info = 'full' in request.GET
+        result = self._retrieve_data(request, pk, is_full=full_info)
 
         login = login_utils.get_login(request.user)
         if (login.role == Login.CONTROLLER) or (login.role == Login.REGISTRATOR):
@@ -602,7 +604,7 @@ class EmployeeViewSet(_AbstractViewSet):
 
             result.update({'departments_count': Employee2Department.objects.filter(
                 employee_id=pk).filter(department__organization_id=login.organization_id).count()})
-            if 'full' in request.GET:
+            if full_info:
                 organization = OrganizationSerializers.ModelSerializer(
                     login.organization).data
 

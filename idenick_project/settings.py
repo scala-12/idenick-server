@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'idenick_app',
-	'rest_framework',
+    'rest_framework',
     'rest_framework.authtoken',
     'djoser',
 ]
@@ -94,14 +94,17 @@ WSGI_APPLICATION = 'idenick_project.wsgi.application'
 # https://docs.djangoproject.com/en/2.2/ref/settings/#databases
 
 DATABASES = {
-	'default': {
-		'ENGINE': 'mysql.connector.django',
-		'NAME': 'idenickdb',
-		'USER': 'idenick_user',
-		'PASSWORD': 'idenick_password',
-        'HOST': '127.0.0.1',                 
-        'PORT': '3306',  
-	}
+    'default': {
+        'ENGINE': 'mysql.connector.django',
+        'NAME': 'idenickdb',
+        'USER': 'idenick_user',
+        'PASSWORD': 'idenick_password',
+        'HOST': '127.0.0.1',
+        'PORT': '3306',
+        'OPTIONS': {
+            'use_unicode': False,
+        },
+    }
 }
 
 
