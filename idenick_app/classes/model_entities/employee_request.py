@@ -14,9 +14,9 @@ from idenick_app.classes.utils.models_utils import DELETED_STATUS
 
 class EmployeeRequest(models.Model):
     """Employee request model. READ ONLY"""
-    id = models.AutoField(editable=False, primary_key=True)
+    id = models.AutoField(editable=False, primary_key=True, db_index=True,)
     moment = models.DateTimeField(
-        editable=False, db_column='stamp', auto_now_add=True)
+        editable=False, db_column='stamp', auto_now_add=True, db_index=True,)
     request_type = models.IntegerField(
         editable=False, db_column='request', choices=request_constants.REQUEST_TYPE,)
     response_type = models.IntegerField(
@@ -26,9 +26,9 @@ class EmployeeRequest(models.Model):
     algorithm_type = models.IntegerField(
         editable=False, db_column='algorithm', choices=algorithm_constants.ALGORITHM_TYPE,)
     employee = models.ForeignKey(
-        'Employee', db_column='usersid', on_delete=models.CASCADE, null=True)
+        'Employee', db_column='usersid', on_delete=models.CASCADE, null=True, db_index=True,)
     device = models.ForeignKey(
-        'Device', db_column='devicesid', on_delete=models.CASCADE, null=True)
+        'Device', db_column='devicesid', on_delete=models.CASCADE, null=True, db_index=True,)
     templatesid = models.IntegerField(editable=False, null=True)
 
     @property
@@ -58,6 +58,10 @@ class EmployeeRequest(models.Model):
     @property
     def date_info(self) -> dict:
         return vars(self.get_date_info())
+
+    @property
+    def date(self) -> str:
+        return self.get_date_info().day
 
     @property
     def device_name(self) -> Optional[str]:

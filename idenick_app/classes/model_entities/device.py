@@ -14,7 +14,7 @@ class Device(AbstractEntry, EntryWithTimezone):
     config = models.CharField(max_length=2000, blank=True, null=True,)
     checkpoint = models.ForeignKey(
         'Checkpoint', db_column='devicegroupsid', related_name='devices',
-        on_delete=models.CASCADE, blank=True, null=True, default=None,)
+        on_delete=models.CASCADE, blank=True, null=True, default=None, db_index=True,)
 
     def save(self, *args, **kwargs):
         super().save_timezone()

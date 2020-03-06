@@ -20,9 +20,11 @@ class Employee(AbstractEntry):
     """Employee model"""
     guid = models.CharField(max_length=50, unique=True,
                             db_column='userid', default=uuid.uuid4)
-    last_name = models.CharField(db_column='surname', max_length=64)
-    first_name = models.CharField(db_column='firstname', max_length=64)
-    patronymic = models.CharField(max_length=64)
+    last_name = models.CharField(
+        db_column='surname', max_length=64, db_index=True,)
+    first_name = models.CharField(
+        db_column='firstname', max_length=64, db_index=True,)
+    patronymic = models.CharField(max_length=64, db_index=True,)
 
     def __str__(self):
         return self._str() + self.full_name

@@ -9,9 +9,11 @@ from idenick_app.classes.utils import date_utils
 class Employee2Organization(AbstractEntry, EntryWithTimesheet):
     """Model of relation between employee and organization"""
     employee = models.ForeignKey(
-        'Employee', db_column='usersid', related_name='organizations', on_delete=models.CASCADE)
+        'Employee', db_column='usersid', related_name='organizations', on_delete=models.CASCADE,
+        db_index=True,)
     organization = models.ForeignKey(
-        'Organization', db_column='companyid', related_name='employees', on_delete=models.CASCADE)
+        'Organization', db_column='companyid', related_name='employees', on_delete=models.CASCADE,
+        db_index=True,)
 
     def save(self, *args, **kwargs):
         super().save_timesheet()

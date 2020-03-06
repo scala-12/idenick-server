@@ -8,9 +8,9 @@ from idenick_app.classes.utils import date_utils
 
 
 class AbstractSimpleEntry(models.Model):
-    id = models.AutoField(primary_key=True)
+    id = models.AutoField(primary_key=True, db_index=True,)
     dropped_at = models.DateTimeField(
-        db_column='rdropped', null=True, blank=True)
+        db_column='rdropped', null=True, blank=True, db_index=True,)
 
     def save(self, *args, **kwargs):
         if not self.dropped_at:

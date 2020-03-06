@@ -8,9 +8,11 @@ from idenick_app.classes.model_entities.abstract_entries import AbstractEntry
 class Employee2Department(AbstractEntry):
     """Model of relation between employee and department"""
     department = models.ForeignKey(
-        'Department', db_column='usergroupid', related_name='employees', on_delete=models.CASCADE)
+        'Department', db_column='usergroupid', related_name='employees', on_delete=models.CASCADE,
+        db_index=True,)
     employee = models.ForeignKey(
-        'Employee', db_column='usersid', related_name='departments', on_delete=models.CASCADE)
+        'Employee', db_column='usersid', related_name='departments', on_delete=models.CASCADE,
+        db_index=True,)
 
     def __str__(self):
         return self._str() + ('[%s] in [%s]' % (self.employee, self.department))

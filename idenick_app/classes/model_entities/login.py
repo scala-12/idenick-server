@@ -24,10 +24,10 @@ class Login(AbstractSimpleEntry):
     ]
 
     guid = models.UUIDField(default=uuid.uuid4, editable=False)
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, db_index=True,)
     role = models.CharField(max_length=4, choices=USER_ROLE, blank=True)
     organization = models.ForeignKey(
-        'Organization', on_delete=models.CASCADE, null=True, blank=True)
+        'Organization', on_delete=models.CASCADE, null=True, blank=True, db_index=True,)
 
     @property
     def created_at(self):
