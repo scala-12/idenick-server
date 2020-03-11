@@ -8,7 +8,8 @@
    pip install -U djoser
    ```
 1. Дополнение для создания Excel-файлов `pip install XlsxWriter`
-1. Библиотеки для работы с *MySQL* - `pip install mysql-connector-python`
+1. Библиотеки для работы с *MySQL* - `pip install mysqlclient`
+   > для Windows могут быть сложности с установкой
 1. Библиотека для работы с MQTT - `pip install paho-mqtt`
 
 ## Первоначальная БД (возможно, неактуально)

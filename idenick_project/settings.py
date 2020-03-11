@@ -95,15 +95,12 @@ WSGI_APPLICATION = 'idenick_project.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'mysql.connector.django',
+        'ENGINE': 'django.db.backends.mysql',
         'NAME': 'idenickdb',
         'USER': 'idenick_user',
         'PASSWORD': 'idenick_password',
         'HOST': '127.0.0.1',
         'PORT': '3306',
-        'OPTIONS': {
-            'use_unicode': False,
-        },
     }
 }
 
