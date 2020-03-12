@@ -268,15 +268,11 @@ def registrate_biometry(employee: Employee, mqtt_id: str, biometry_data: str,
 
     device_mqtt = mqtt_id.replace('/', '')
 
-    client_info = {'command': None, 'disabled': None,
-                   'subscribed': False, 'employee': None, }
-
-    def on_connect(client):
-        client.subscribe(SUBSCRIBE_TOPIC_THREAD + device_mqtt, qos=0)
+    options = {'command': None, 'disabled': None,
+               'subscribed': False, 'employee': None, 'result': None, }
 
     def on_subscribe(client):
-        client.publish(PUBLISH_TOPIC_THREAD + device_mqtt, mqtt_command)
-        client_info.update(subscribed=True)
+        options.update(subscribed=True)
 
     def on_message(client, msg):
         payload_str = str(msg.payload)
@@ -295,42 +291,35 @@ def registrate_biometry(employee: Employee, mqtt_id: str, biometry_data: str,
                         last_name=employee_info[0], first_name=employee_info[1],
                         patronymic=employee_info[2])
 
-                client_info.update(employee=employee.first())
+                options.update(employee=employee.first())
 
-            client_info.update(command=result_msg)
-            client_info.update(disabled='!ENROLL_OK,' not in result_msg)
+            options.update(command=result_msg)
+            options.update(disabled='!ENROLL_OK,' not in result_msg)
 
             client.disconnect()
 
-    connection = _Connection(
-        client_id=(device_mqtt + ' biometry_endroll'),
-        on_connect=on_connect,
-        on_subscribe=on_subscribe,
-        on_message=on_message,)
-
-    connection.connect()
-
-    result = None
-    if connection.is_connected():
-        waiting = 0
-        while (waiting < 20) and (client_info.get('disabled') is None):
-            waiting += 1
-            connection.loop()
-
-        if client_info.get('disabled') is None:
-            result = RegistrationResult(
-                success=False, comment='Результат неизвестен',)
+    def on_end():
+        if options.get('disabled') is None:
+            options.update(result=RegistrationResult(
+                success=False, comment='Результат неизвестен',))
         else:
             employee = None
-            if client_info.get('employee') is not None:
+            if options.get('employee') is not None:
                 employee = EmployeeSerializers.ModelSerializer(
-                    client_info.get('employee')).data
-            result = RegistrationResult(success=not client_info.get('disabled'),
-                                        employee=employee,
-                                        comment=client_info.get('command'),)
-        connection.disconnect()
-    else:
-        result = RegistrationResult(
-            comment='Не удается подключиться к серверу',)
+                    options.get('employee')).data
+            options.update(result=RegistrationResult(success=not options.get('disabled'),
+                                                     employee=employee,
+                                                     comment=options.get('command'),))
 
-    return result
+    _connect_2_topic(
+        label='biometry_search',
+        mqtt_command=mqtt_command,
+        on_subscribe=on_subscribe,
+        on_message=on_message,
+        on_end=on_end,
+        stop_check=lambda: (options.get('disabled') is None),
+        on_connect_failure=lambda: (options.update(result=RegistrationResult(
+            comment='Не удается подключиться к серверу',)))
+    )
+
+    return options.get('result')
