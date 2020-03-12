@@ -1,4 +1,5 @@
 """views"""
+import base64
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -14,11 +15,12 @@ from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from idenick_app.classes.constants.identification import algorithm_constants
 from idenick_app.models import (AbstractEntry, Checkpoint,
                                 Checkpoint2Organization, Department, Device,
                                 Device2Organization, Employee,
                                 Employee2Department, Employee2Organization,
-                                Login, Organization)
+                                IndentificationTepmplate, Login, Organization)
 from idenick_rest_api_v0.classes.utils import (login_utils, relation_utils,
                                                report_utils, request_utils,
                                                utils)
@@ -645,6 +647,27 @@ class EmployeeViewSet(_AbstractViewSet):
                     'first_name', entity.first_name)
                 entity.patronymic = data.get(
                     'patronymic', entity.patronymic)
+
+                new_template = None
+                if ('photo' in request.data) and (len(request.data.get('photo').strip()) != 0):
+                    new_template = IndentificationTepmplate(**{
+                        'employee_id': entity.id,
+                        'algorithm_type': algorithm_constants.EMPLOYEE_AVATAR,
+                        'algorithm_version': 0,
+                        'template': base64.b64decode(request.data.get('photo').encode()),
+                    })
+
+                if entity.has_photo:
+                    old_template = IndentificationTepmplate.objects.get(
+                        employee_id=entity.id,
+                        algorithm_type=algorithm_constants.EMPLOYEE_AVATAR,
+                        dropped_at=None)
+                    if (new_template is None) or (old_template.template != new_template.template):
+                        old_template.dropped_at = datetime.now()
+                        old_template.save()
+                        new_template.save()
+                elif new_template is not None:
+                    new_template.save()
 
                 entity.save()
 
