@@ -1,5 +1,6 @@
 """MQTT utils"""
 import base64
+import uuid
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -150,6 +151,88 @@ class _Connection:
                 print("Error  occured. Arguments {0}.".format(
                     e.args))
             count += 1
+
+
+@dataclass
+class CheckResult:
+    """biometry exists result"""
+
+    def __init__(self, exists: bool, employee: Optional[Employee] = None):
+        self.exists = exists
+        self.employee = employee
+
+
+def _connect_2_topic(
+        label: str,
+        mqtt_command,
+        on_subscribe,
+        on_message,
+        on_end,
+        on_connect_failure=None,
+        device_mqtt: Optional[str] = str(uuid.uuid4().int),
+        stop_check=None,):
+    def on_connect(client):
+        client.subscribe(SUBSCRIBE_TOPIC_THREAD + device_mqtt, qos=0)
+
+    def on_subscribe(client):
+        client.publish(PUBLISH_TOPIC_THREAD + device_mqtt, mqtt_command)
+        on_subscribe(client)
+
+    def on_message(client, msg):
+        on_message(client, msg)
+
+    connection = _Connection(
+        client_id=(device_mqtt + ' ' + label),
+        on_connect=on_connect,
+        on_subscribe=on_subscribe,
+        on_message=on_message,)
+
+    connection.connect()
+
+    _stop_check = (lambda: False) if stop_check is None else stop_check
+    if connection.is_connected():
+        waiting = 0
+        while (waiting < 20) and not _stop_check():
+            waiting += 1
+            connection.loop()
+
+        on_end()
+
+        connection.disconnect()
+    elif on_connect_failure is not None:
+        on_connect_failure()
+
+
+def check_biometry(biometry_bytes) -> CheckResult:
+    mqtt_command = ('!FACE_SEARCH,0,' +
+                    '\r\n').encode('utf-8') + biometry_bytes
+    options = {'subscribed': False, 'employee': None, 'result': None, }
+
+    def on_subscribe(client):
+        options.update(subscribed=True)
+
+    def on_message(client, msg):
+        payload_str = str(msg.payload)
+        if '!SEARCH_OK,' in payload_str:
+            result_msg = msg.payload.decode('utf-8').strip()
+            options.update(employee=employee_info[3])
+
+            client.disconnect()
+
+    def on_end():
+        employee_id = options.get('employee')
+        options.update(result=CheckResult(exists=(employee_id is not None),
+                                          employee=employee_id,))
+
+    _connect_2_topic(
+        label='biometry_search',
+        mqtt_command=mqtt_command,
+        on_subscribe=on_subscribe,
+        on_message=on_message,
+        on_end=on_end
+    )
+
+    return options.get('result')
 
 
 @dataclass

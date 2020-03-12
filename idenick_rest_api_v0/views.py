@@ -24,7 +24,8 @@ from idenick_app.models import (AbstractEntry, Checkpoint,
 from idenick_rest_api_v0.classes.utils import (login_utils, relation_utils,
                                                report_utils, request_utils,
                                                utils)
-from idenick_rest_api_v0.classes.utils.mqtt_utils import BiometryType
+from idenick_rest_api_v0.classes.utils.mqtt_utils import (BiometryType,
+                                                          check_biometry)
 from idenick_rest_api_v0.classes.utils.mqtt_utils import \
     registrate_biometry as registrate_biometry_by_device
 from idenick_rest_api_v0.serializers import (CheckpointSerializers,
@@ -648,20 +649,29 @@ class EmployeeViewSet(_AbstractViewSet):
                 entity.patronymic = data.get(
                     'patronymic', entity.patronymic)
 
-                new_template = None
-                if ('photo' in request.data) and (len(request.data.get('photo').strip()) != 0):
-                    new_template = IndentificationTepmplate(**{
-                        'employee_id': entity.id,
-                        'algorithm_type': algorithm_constants.EMPLOYEE_AVATAR,
-                        'algorithm_version': 0,
-                        'template': base64.b64decode(request.data.get('photo').encode()),
-                    })
-
-                if entity.has_photo:
-                    old_template = IndentificationTepmplate.objects.get(
+                old_template = IndentificationTepmplate.objects.get(
                         employee_id=entity.id,
                         algorithm_type=algorithm_constants.EMPLOYEE_AVATAR,
                         dropped_at=None)
+                new_template = None
+                if ('photo' in request.data) and (len(request.data.get('photo').strip()) != 0):
+                    template_data = base64.b64decode(
+                        request.data.get('photo').encode())
+                    biometry_check_result = check_biometry(template_data)
+                    if (entity.has_face
+                            and (biometry_check_result.employee == entity.id))\
+                            or (not entity.has_face and not biometry_check_result.exists):
+                        new_template = IndentificationTepmplate(**{
+                            'employee_id': entity.id,
+                            'algorithm_type': algorithm_constants.EMPLOYEE_AVATAR,
+                            'algorithm_version': 0,
+                            'template': template_data,
+                            'quality': 100,
+                        })
+                    else:
+                        new_template = old_template
+
+                if entity.has_photo:
                     if (new_template is None) or (old_template.template != new_template.template):
                         old_template.dropped_at = datetime.now()
                         old_template.save()
