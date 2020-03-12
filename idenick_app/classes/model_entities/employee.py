@@ -69,7 +69,7 @@ class Employee(AbstractEntry):
             one_type=algorithm_constants.EMPLOYEE_AVATAR)
 
     @property
-    def photo(self) -> bool:
+    def photo(self) -> str:
         """return employee photo if exists"""
         templates = self._get_identification_templates(
             one_type=algorithm_constants.EMPLOYEE_AVATAR)
