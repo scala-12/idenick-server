@@ -5,7 +5,7 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import xlsxwriter
 from django.db import connection, reset_queries
@@ -122,7 +122,7 @@ def _get_employees_requests(request,
 
             if (organization_filter is None) \
                     or Device2Organization.objects.filter(device_id=entity_id)\
-                .filter(organization_id=organization_filter).exists():
+            .filter(organization_id=organization_filter).exists():
                 report_queryset = report_queryset.filter(
                     device_id=entity_id)
             else:
@@ -132,7 +132,7 @@ def _get_employees_requests(request,
 
             if (organization_filter is None) \
                     or Checkpoint2Organization.objects.filter(checkpoint_id=entity_id) \
-                .filter(organization_id=organization_filter).exists():
+            .filter(organization_id=organization_filter).exists():
                 devices_ids = Device.objects.filter(
                     checkpoint_id=entity_id).values_list('id', flat=True)
 
@@ -365,7 +365,6 @@ class _ReportLinesInfo:
 class _ShortDailyInfo:
     def __init__(self):
         self.incoming_sequence = []
-        self.outcoming_sequence = []
         self._employee_2_requests = {}
         self.lines_count = 0
 
@@ -378,8 +377,6 @@ class _ShortDailyInfo:
         if (len(self._employee_2_requests[employee]) % 2) == 1:
             self.incoming_sequence.append(request)
             self.lines_count += 1
-        else:
-            self.outcoming_sequence.append(request)
 
     def get_employee_sequence(self, employee) -> List[int]:
         return self._employee_2_requests[employee]
@@ -389,12 +386,16 @@ class _RequestSequenceByDate:
     def __init__(self):
         self._map: Dict[str, _ShortDailyInfo] = {}
         self.dates: List[str] = []
+        self.employees: Set[int] = set()
+        self.requests: Set[int] = set()
 
     def update(self, date: str, request: int, employee: int):
         if not date in self._map:
             self.dates.insert(0, date)
             self._map.update({date: _ShortDailyInfo()})
         self._map[date].add_request(request, employee)
+        self.employees.add(employee)
+        self.requests.add(request)
 
     def get_daily(self, date: str) -> _ShortDailyInfo:
         return self._map[date]
@@ -455,7 +456,7 @@ def _get_report_info(request) -> _ReportLinesInfo:
                     end_diff = remainder_diff
                     end_date_index = i
     visible_dates = None
-    not_used_requests = []
+    request_ids_set = daily_requests_info_by_date.requests
     if start_date_index is None:
         pass  # TODO: exception
     else:
@@ -468,18 +469,13 @@ def _get_report_info(request) -> _ReportLinesInfo:
         end_date = daily_requests_info_by_date.dates[end_date_index]
         first_incomings = daily_requests_info_by_date.get_daily(
             start_date).incoming_sequence
-        last_incomings = [] if end_diff == 0 else daily_requests_info_by_date.get_daily(
-            end_date).incoming_sequence
-        not_used_requests = first_incomings[:len(first_incomings) - start_diff] \
-            + last_incomings[end_diff:]
+        start_excludes = set(
+            first_incomings[:len(first_incomings) - start_diff])
+        end_excludes = set() if end_diff == 0 else set(daily_requests_info_by_date.get_daily(
+            end_date).incoming_sequence[end_diff:])
+        request_ids_set -= start_excludes.union(end_excludes)
 
-    request_id_list = [id
-                       for date in visible_dates
-                       for id in (daily_requests_info_by_date.get_daily(date).incoming_sequence
-                                  + daily_requests_info_by_date.get_daily(date)
-                                  .outcoming_sequence)]
-    queryset = EmployeeRequest.objects.exclude(
-        id__in=not_used_requests).filter(id__in=request_id_list)
+    queryset = EmployeeRequest.objects.filter(id__in=request_ids_set)
     mapped_queryset = {e.id: e for e in queryset}
     get_department = (lambda employee_request:
                       _find_report_department(employee_request, report_data.organization))\
