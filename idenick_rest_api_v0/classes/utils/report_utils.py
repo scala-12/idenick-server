@@ -1,17 +1,21 @@
 """report utils"""
 import io
 import json
+import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import xlsxwriter
+from django.db import connection, reset_queries
+from django.db.models import CharField, Count, F, Func, Value
+from django.db.models.functions import Concat
 from django.http import FileResponse
 
 from idenick_app.classes.utils import date_utils
-from idenick_app.models import (Department, Device, Device2Organization,
-                                Checkpoint, Checkpoint2Organization,
+from idenick_app.models import (Checkpoint, Checkpoint2Organization,
+                                Department, Device, Device2Organization,
                                 Employee, Employee2Department,
                                 Employee2Organization, EmployeeRequest, Login,
                                 Organization)
@@ -30,11 +34,6 @@ class _ReportType(Enum):
     DEVICE = 'DEVICE'
     CHECKPOINT = 'CHECKPOINT'
     ALL = 'ALL'
-
-
-class _ReportTimeType(Enum):
-    ALL = 'ALL'
-    LATE = 'LATE'
 
 
 @dataclass
@@ -69,13 +68,14 @@ def _get_employees_requests(request,
     from_date = None
     from_time = request_utils.get_request_param(request, 'start')
     if from_time is not None:
-        from_date = datetime.strptime(from_time, "%Y%m%d")
+        from_date = datetime.strptime(
+            from_time, "%Y%m%d")
 
     to_date = None
     to_time = request_utils.get_request_param(request, 'end')
     if to_time is not None:
-        to_date = datetime.strptime(
-            to_time, "%Y%m%d") + timedelta(days=1, microseconds=-1)
+        to_date = (datetime.strptime(
+            to_time, "%Y%m%d") + timedelta(days=1, microseconds=-1))
 
     report_queryset = EmployeeRequest.objects.all()
     if without_none:
@@ -93,12 +93,8 @@ def _get_employees_requests(request,
             name = 'employee '
             report_queryset = report_queryset.filter(employee_id=entity_id)
 
-            if (organization_filter is None) or Employee2Organization.objects \
-                    .filter(employee_id=entity_id, organization_id=organization_filter) \
-                .exists():
-                report_queryset = report_queryset.filter(
-                    employee_id=entity_id)
-            else:
+            if (organization_filter is not None) and not Employee2Organization.objects \
+                    .filter(employee_id=entity_id, organization_id=organization_filter).exists():
                 report_queryset = EmployeeRequest.objects.none()
         elif entity_type == _ReportType.DEPARTMENT:
             name = 'department '
@@ -155,12 +151,8 @@ def _get_employees_requests(request,
         organization_devices = Device2Organization.objects.filter(
             organization_id=organization).values_list('device_id', flat=True)
 
-        reports = EmployeeRequest.objects.filter(
-            employee_id__in=organization_employees).values_list('id', flat=True)\
-            .union(EmployeeRequest.objects.filter(
-                device_id__in=organization_devices).values_list('id', flat=True))
-
-        report_queryset = report_queryset.filter(id__in=reports)
+        report_queryset = report_queryset.filter(
+            employee_id__in=organization_employees, device_id__in=organization_devices)
 
     report_queryset = report_queryset.order_by('-moment')
 
@@ -169,13 +161,11 @@ def _get_employees_requests(request,
     if to_date is not None:
         report_queryset = report_queryset.filter(moment__lte=to_date)
 
-    paginated_report_queryset = None
-    if (page is None) or (per_page is None):
-        paginated_report_queryset = report_queryset
-    else:
+    paginated_report_queryset = report_queryset.all()
+    if (page is not None) and (per_page is not None):
         offset = int(page) * int(per_page)
         limit = offset + int(per_page) * int(page_count)
-        paginated_report_queryset = report_queryset[offset:limit]
+        paginated_report_queryset = paginated_report_queryset[offset:limit]
 
     return _RequestsQuerysetInfo(queryset=paginated_report_queryset,
                                  name=name,
@@ -322,6 +312,7 @@ class _ReportLine:
                  utc: str,
                  incoming_date: date_utils.DateInfo,
                  incoming_device: Optional[Checkpoint] = None,
+                 is_later: bool = False,
                  outcoming_date: Optional[date_utils.DateInfo] = None,
                  outcoming_device: Optional[Checkpoint] = None,
                  ):
@@ -334,6 +325,7 @@ class _ReportLine:
         self.week_day = incoming_date.week_day
         self.utc = utc
 
+        self.is_later = is_later
         self.incoming_time = incoming_date.time
         outcoming_time = None
         time_count = None
@@ -370,90 +362,180 @@ class _ReportLinesInfo:
         self.name = name
 
 
+class _ShortDailyInfo:
+    def __init__(self):
+        self.incoming_sequence = []
+        self.outcoming_sequence = []
+        self._employee_2_requests = {}
+        self.lines_count = 0
+
+    def add_request(self, request, employee):
+        if employee in self._employee_2_requests:
+            self._employee_2_requests[employee].append(request)
+        else:
+            self._employee_2_requests.update({employee: [request]})
+
+        if (len(self._employee_2_requests[employee]) % 2) == 1:
+            self.incoming_sequence.append(request)
+            self.lines_count += 1
+        else:
+            self.outcoming_sequence.append(request)
+
+    def get_employee_sequence(self, employee) -> List[int]:
+        return self._employee_2_requests[employee]
+
+
+class _RequestSequenceByDate:
+    def __init__(self):
+        self._map: Dict[str, _ShortDailyInfo] = {}
+        self.dates: List[str] = []
+
+    def update(self, date: str, request: int, employee: int):
+        if not date in self._map:
+            self.dates.insert(0, date)
+            self._map.update({date: _ShortDailyInfo()})
+        self._map[date].add_request(request, employee)
+
+    def get_daily(self, date: str) -> _ShortDailyInfo:
+        return self._map[date]
+
+
 def _get_report_info(request) -> _ReportLinesInfo:
     """get report info for users"""
     report_data = _get_employees_requests(
         request, without_none=True, without_pagination=True)
-    report_queryset = report_data.queryset
-    time_type = _ReportTimeType(
-        request_utils.get_request_param(request, 'timeType'))
 
-    queryset = EmployeeRequest.objects.filter(id__in=set(
-        report_queryset.values_list('id', flat=True))).order_by('employee', 'moment')
+    short_requests = report_data.queryset.all().order_by('moment')\
+        .annotate(
+            short_date=Concat(Func(F("moment"), function="dayofyear"),
+                              Value(' '),
+                              Func(F("moment"), function="year")))\
+        .values('id', 'employee_id', 'short_date')
 
-    get_department = (lambda employee_request:
-                      _find_report_department(employee_request, report_data.organization)) \
-        if report_data.department is None \
-        else lambda _line: report_data.department
+    daily_requests_info_by_date = _RequestSequenceByDate()
+    for r in short_requests:
+        daily_requests_info_by_date.update(
+            r['short_date'], r['id'], r['employee_id'])
 
-    employee_requests = list(queryset)
-    i = 0
-    i_end = len(employee_requests)
-
-    report_lines = []
-
-    if (time_type != _ReportTimeType.LATE) \
-            or (report_data.organization.timesheet_start is not None):
-        while i < i_end:
-            employee_request: EmployeeRequest = employee_requests[i]
-
-            incoming_device = employee_request.device
-            outcoming_device = None
-            incoming_date = employee_request.get_date_info()
-            outcoming_date = None
-            next_employee_request = None
-            if (i + 1) < i_end:
-                next_employee_request: EmployeeRequest = employee_requests[i + 1]
-                next_date_info = next_employee_request.get_date_info()
-                if (employee_request.employee_id == next_employee_request.employee_id) \
-                        and (incoming_date.day == next_date_info.day):
-                    outcoming_date = next_date_info
-                    outcoming_device = next_employee_request.device
-                    i += 1
-
-            utc_value = incoming_date.utc
-            if (utc_value is None) and (outcoming_date is not None):
-                utc_value = outcoming_date.utc
-
-            line = _ReportLine(id=employee_request.id,
-                               employee=employee_request.employee,
-                               department=get_department(employee_request),
-                               incoming_date=incoming_date,
-                               incoming_device=incoming_device,
-                               outcoming_date=outcoming_date,
-                               outcoming_device=outcoming_device,
-                               utc=utc_value)
-
-            if time_type == _ReportTimeType.LATE:
-                incoming_time_as_duration = date_utils.str_to_duration(
-                    incoming_date.time)
-                start_as_duration = report_data.organization.timesheet_start_as_duration
-                if incoming_time_as_duration > start_as_duration:
-                    report_lines.append(line)
-
-                if next_employee_request is not None:
-                    while ((i + 1) < i_end) and (incoming_date.day == next_date_info.day) \
-                            and (employee_request.employee_id == next_employee_request.employee_id):
-                        i += 1
-                        next_employee_request: EmployeeRequest = employee_requests[i + 1]
-                        next_date_info = next_employee_request.get_date_info()
-            else:
-                report_lines.append(line)
-
-            i += 1
-
-    page = request_utils.get_request_param(request, 'from', True)
-    page_count = request_utils.get_request_param(request, 'count', True, 1)
-    per_page = request_utils.get_request_param(request, 'perPage', True)
-
-    count = len(report_lines)
+    timesheet_start_as_duration = report_data.organization.timesheet_start_as_duration
+    offset = None
+    limit = None
+    page = request_utils.get_request_param(
+        request, name='from', is_int=True)
+    page_count = request_utils.get_request_param(
+        request, name='count', is_int=True, default=1)
+    per_page = request_utils.get_request_param(
+        request, name='perPage', is_int=True)
     if (page is not None) and (per_page is not None):
         offset = int(page) * int(per_page)
         limit = offset + int(per_page) * int(page_count)
-        report_lines = report_lines[offset:limit]
+    else:
+        pass  # TODO: exception
+
+    lines_count = 0
+    start_date_index = None
+    start_diff = 0
+    end_diff = 0
+    end_date_index = None
+    dates_len = len(daily_requests_info_by_date.dates)
+    for i in range(dates_len):
+        date = daily_requests_info_by_date.dates[i]
+        daily_requests_info = daily_requests_info_by_date.get_daily(date)
+        lines_count += daily_requests_info.lines_count
+
+        if end_date_index is None:
+            current_diff = lines_count - offset
+            if current_diff > 0:
+                if start_date_index is None:
+                    start_diff = current_diff
+                    start_date_index = i
+
+                remainder_diff = limit - current_diff
+                if remainder_diff < 0:
+                    end_diff = remainder_diff
+                    end_date_index = i
+    visible_dates = None
+    not_used_requests = []
+    if start_date_index is None:
+        pass  # TODO: exception
+    else:
+        if end_date_index is None:
+            end_date_index = dates_len - 1
+        visible_dates = daily_requests_info_by_date.dates[start_date_index:(
+            end_date_index + 1)]
+
+        start_date = daily_requests_info_by_date.dates[start_date_index]
+        end_date = daily_requests_info_by_date.dates[end_date_index]
+        first_incomings = daily_requests_info_by_date.get_daily(
+            start_date).incoming_sequence
+        last_incomings = [] if end_diff == 0 else daily_requests_info_by_date.get_daily(
+            end_date).incoming_sequence
+        not_used_requests = first_incomings[:len(first_incomings) - start_diff] \
+            + last_incomings[end_diff:]
+
+    request_id_list = [id
+                       for date in visible_dates
+                       for id in (daily_requests_info_by_date.get_daily(date).incoming_sequence
+                                  + daily_requests_info_by_date.get_daily(date)
+                                  .outcoming_sequence)]
+    queryset = EmployeeRequest.objects.exclude(
+        id__in=not_used_requests).filter(id__in=request_id_list)
+    mapped_queryset = {e.id: e for e in queryset}
+    get_department = (lambda employee_request:
+                      _find_report_department(employee_request, report_data.organization))\
+        if report_data.department is None\
+        else lambda _line: report_data.department
+    report_lines = []
+    for date in visible_dates:
+        laters_info_in_day = {}
+        daily = daily_requests_info_by_date.get_daily(date)
+        for request_id in daily.incoming_sequence:
+            if request_id in mapped_queryset:
+                incoming_request = mapped_queryset[request_id]
+                incoming_device = incoming_request.device
+                incoming_date = incoming_request.get_date_info()
+                employee_id = incoming_request.employee.id
+
+                outcoming_device = None
+                outcoming_date = None
+                employee_sequence = daily.get_employee_sequence(employee_id)
+                outcoming_index = employee_sequence.index(request_id) + 1
+                outcoming_request_as_list = employee_sequence[outcoming_index:outcoming_index+1]
+                if len(outcoming_request_as_list) != 0:
+                    outcoming_request_id = outcoming_request_as_list[0]
+                    outcoming_request = mapped_queryset[outcoming_request_id]
+                    outcoming_date = outcoming_request.get_date_info()
+                    outcoming_device = outcoming_request.device
+
+                utc_value = incoming_date.utc
+                if (utc_value is None) and (outcoming_date is not None):
+                    utc_value = outcoming_date.utc
+
+                is_later = False
+                if timesheet_start_as_duration is not None:
+                    if not employee_id in laters_info_in_day:
+                        incoming_time_as_duration = date_utils.str_to_duration(
+                            incoming_date.time)
+                        laters_info_in_day.update(
+                            {employee_id: (incoming_time_as_duration >
+                                           timesheet_start_as_duration)})
+
+                    is_later = laters_info_in_day[employee_id]
+
+                line = _ReportLine(id=incoming_request.id,
+                                   employee=incoming_request.employee,
+                                   department=get_department(incoming_request),
+                                   is_later=is_later,
+                                   incoming_date=incoming_date,
+                                   incoming_device=incoming_device,
+                                   outcoming_date=outcoming_date,
+                                   outcoming_device=outcoming_device,
+                                   utc=utc_value)
+
+                report_lines.append(line)
 
     return _ReportLinesInfo(lines=report_lines,
-                            count=count,
+                            count=lines_count,
                             organization=report_data.organization,
                             name=report_data.name)
 
@@ -564,7 +646,7 @@ class _ReportFileWriter:
     def write_lines(self, info: _ReportLinesInfo):
         for line in info.lines:
             self._write_cell(
-                self._row, _HeaderName.checkpoint, line.checkpoints)
+                self._row, _HeaderName.CHECKPOINT, line.checkpoints)
 
             self._write_cell(self._row, _HeaderName.MONTH, line.month)
             self._write_cell(self._row, _HeaderName.DATE, line.date)
