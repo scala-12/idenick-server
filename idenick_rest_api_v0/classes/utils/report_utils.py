@@ -122,7 +122,7 @@ def _get_employees_requests(request,
 
             if (organization_filter is None) \
                     or Device2Organization.objects.filter(device_id=entity_id)\
-            .filter(organization_id=organization_filter).exists():
+                .filter(organization_id=organization_filter).exists():
                 report_queryset = report_queryset.filter(
                     device_id=entity_id)
             else:
@@ -132,7 +132,7 @@ def _get_employees_requests(request,
 
             if (organization_filter is None) \
                     or Checkpoint2Organization.objects.filter(checkpoint_id=entity_id) \
-            .filter(organization_id=organization_filter).exists():
+                .filter(organization_id=organization_filter).exists():
                 devices_ids = Device.objects.filter(
                     checkpoint_id=entity_id).values_list('id', flat=True)
 
@@ -418,7 +418,7 @@ def _get_report_info(request) -> _ReportLinesInfo:
         daily_requests_info_by_date.update(
             r['short_date'], r['id'], r['employee_id'])
 
-    timesheet_start_as_duration = report_data.organization.timesheet_start_as_duration
+    organization_timesheet = report_data.organization.timesheet_start_as_duration
     offset = None
     limit = None
     page = request_utils.get_request_param(
@@ -475,6 +475,14 @@ def _get_report_info(request) -> _ReportLinesInfo:
             end_date).incoming_sequence[end_diff:])
         request_ids_set -= start_excludes.union(end_excludes)
 
+    timesheets_start_info = Employee2Organization.objects\
+        .filter(
+            employee_id__in=daily_requests_info_by_date.employees, organization=report_data.organization)\
+        .values_list('employee_id', 'timesheet_start')
+    timesheets_start_by_employee = {info[0]: None if info[1] is None
+                                    else date_utils.str_to_duration(info[1])
+                                    for info in timesheets_start_info}
+
     queryset = EmployeeRequest.objects.filter(id__in=request_ids_set)
     mapped_queryset = {e.id: e for e in queryset}
     get_department = (lambda employee_request:
@@ -508,13 +516,16 @@ def _get_report_info(request) -> _ReportLinesInfo:
                     utc_value = outcoming_date.utc
 
                 is_later = False
-                if timesheet_start_as_duration is not None:
+                employee_timesheet = timesheets_start_by_employee[employee_id]
+                if (organization_timesheet is not None) or (employee_timesheet is not None):
                     if not employee_id in laters_info_in_day:
                         incoming_time_as_duration = date_utils.str_to_duration(
                             incoming_date.time)
+                        timesheet = organization_timesheet if employee_timesheet is None \
+                            else employee_timesheet
                         laters_info_in_day.update(
                             {employee_id: (incoming_time_as_duration >
-                                           timesheet_start_as_duration)})
+                                           timesheet)})
 
                     is_later = laters_info_in_day[employee_id]
 
