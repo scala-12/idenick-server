@@ -2,6 +2,7 @@
 from django.db import models
 
 from idenick_app.classes.constants.identification import algorithm_constants
+from idenick_app.classes.utils.models_utils import TinyIntegerField
 
 
 class IndentificationTepmplate(models.Model):
@@ -11,10 +12,10 @@ class IndentificationTepmplate(models.Model):
         'Employee', db_column='usersid', on_delete=models.CASCADE, db_index=True,)
     algorithm_type = models.SmallIntegerField(
         db_column='algorithm', choices=algorithm_constants.ALGORITHM_TYPE, db_index=True,)
-    algorithm_version = models.SmallIntegerField(
+    algorithm_version = TinyIntegerField(
         db_column='algorithmVersion',)
     template = models.BinaryField()
-    quality = models.SmallIntegerField(
+    quality = TinyIntegerField(
         null=True, blank=True, default=0,)
     config = models.CharField(
         max_length=2000, null=True, blank=True,)
