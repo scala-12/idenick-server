@@ -649,10 +649,11 @@ class EmployeeViewSet(_AbstractViewSet):
                 entity.patronymic = data.get(
                     'patronymic', entity.patronymic)
 
+                has_photo = entity.has_photo
                 old_template = IndentificationTepmplate.objects.get(
-                        employee_id=entity.id,
-                        algorithm_type=algorithm_constants.EMPLOYEE_AVATAR,
-                        dropped_at=None)
+                    employee_id=entity.id,
+                    algorithm_type=algorithm_constants.EMPLOYEE_AVATAR,
+                    dropped_at=None) if has_photo else None
                 new_template = None
                 if ('photo' in request.data) and (len(request.data.get('photo').strip()) != 0):
                     template_data = base64.b64decode(
@@ -671,7 +672,7 @@ class EmployeeViewSet(_AbstractViewSet):
                     else:
                         new_template = old_template
 
-                if entity.has_photo:
+                if has_photo:
                     if (new_template is None) or (old_template.template != new_template.template):
                         old_template.dropped_at = datetime.now()
                         old_template.save()
