@@ -259,7 +259,7 @@ def get_deleted_filter(request, base_filter: bool, with_dropped: bool) -> _Delet
 
 
 class OrganizationViewSet(_AbstractViewSet):
-    def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False):
         result = None
         if (action == 'list') or (action == 'retrieve'):
             result = OrganizationSerializers.ModelSerializer
@@ -376,7 +376,7 @@ class OrganizationViewSet(_AbstractViewSet):
 
 
 class DepartmentViewSet(_AbstractViewSet):
-    def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False):
         result = None
         if (action == 'list') or (action == 'retrieve'):
             result = DepartmentSerializers.ModelSerializer
@@ -727,7 +727,7 @@ class EmployeeViewSet(_AbstractViewSet):
 
 
 class _UserViewSet(_AbstractViewSet):
-    def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False):
         result = None
         if (action == 'list') or (action == 'retrieve'):
             result = LoginSerializer.FullSerializer
@@ -893,7 +893,7 @@ class ControllerViewSet(_UserViewSet):
 
 
 class DeviceViewSet(_AbstractViewSet):
-    def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False):
         result = None
         if (action == 'list') or (action == 'retrieve'):
             result = DeviceSerializers.ModelSerializer
@@ -1066,7 +1066,7 @@ class DeviceViewSet(_AbstractViewSet):
 
 
 class CheckpointViewSet(_AbstractViewSet):
-    def get_serializer_by_action(self, action: str, is_full: Optional[bool]):
+    def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False):
         result = None
         if (action == 'list') or (action == 'retrieve'):
             result = CheckpointSerializers.ModelSerializer
