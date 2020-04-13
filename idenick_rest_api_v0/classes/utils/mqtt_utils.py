@@ -174,18 +174,18 @@ def _connect_2_topic(
     def on_connect(client):
         client.subscribe(SUBSCRIBE_TOPIC_THREAD + device_mqtt, qos=0)
 
-    def on_subscribe(client):
+    def on_subscribe_func(client):
         client.publish(PUBLISH_TOPIC_THREAD + device_mqtt, mqtt_command)
         on_subscribe(client)
 
-    def on_message(client, msg):
+    def on_message_func(client, msg):
         on_message(client, msg)
 
     connection = _Connection(
         client_id=(device_mqtt + ' ' + label),
         on_connect=on_connect,
-        on_subscribe=on_subscribe,
-        on_message=on_message,)
+        on_subscribe=on_subscribe_func,
+        on_message=on_message_func,)
 
     connection.connect()
 
@@ -317,7 +317,7 @@ def registrate_biometry(employee: Employee, mqtt_id: str, biometry_data: str,
         on_subscribe=on_subscribe,
         on_message=on_message,
         on_end=on_end,
-        stop_check=lambda: (options.get('disabled') is None),
+        stop_check=lambda: (options.get('disabled') is not None),
         on_connect_failure=lambda: (options.update(result=RegistrationResult(
             comment='Не удается подключиться к серверу',)))
     )
