@@ -1,6 +1,6 @@
 """report utils"""
 from idenick_app.models import Organization
-from idenick_rest_api_v0.serializers import OrganizationSerializers
+from idenick_rest_api_v0.serializers import organization_serializers
 
 
 def get_objects_by_id(serializer, queryset=None, ids=None, clazz=None):
@@ -19,4 +19,4 @@ def get_objects_by_id(serializer, queryset=None, ids=None, clazz=None):
 
 def get_organizations_by_id(ids):
     """map organization to map {id: organization}"""
-    return get_objects_by_id(OrganizationSerializers.ModelSerializer, clazz=Organization, ids=ids)
+    return get_objects_by_id(organization_serializers.ModelSerializer, clazz=Organization, ids=ids)

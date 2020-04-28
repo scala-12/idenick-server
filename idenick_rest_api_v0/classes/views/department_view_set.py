@@ -11,19 +11,19 @@ from idenick_app.models import (Department, Employee2Department, Login,
 from idenick_rest_api_v0.classes.utils import (login_utils, request_utils,
                                                utils, views_utils)
 from idenick_rest_api_v0.classes.views.abstract_view_set import AbstractViewSet
-from idenick_rest_api_v0.serializers import (DepartmentSerializers,
-                                             OrganizationSerializers)
+from idenick_rest_api_v0.serializers import (department_serializers,
+                                             organization_serializers)
 
 
 class DepartmentViewSet(AbstractViewSet):
     def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False):
         result = None
         if (action == 'list') or (action == 'retrieve'):
-            result = DepartmentSerializers.ModelSerializer
+            result = department_serializers.ModelSerializer
         elif action == 'create':
-            result = DepartmentSerializers.CreateSerializer
+            result = department_serializers.CreateSerializer
         elif action == 'partial_update':
-            result = DepartmentSerializers.UpdateSerializer
+            result = department_serializers.UpdateSerializer
 
         return result
 
@@ -73,7 +73,7 @@ class DepartmentViewSet(AbstractViewSet):
         result = self._retrieve_data(request, pk)
 
         if 'full' in request.GET:
-            result.update({'organization': OrganizationSerializers.ModelSerializer(
+            result.update({'organization': organization_serializers.ModelSerializer(
                 Organization.objects.get(id=result.get('data',).get('organization'))).data})
 
         return request_utils.response(result)

@@ -19,18 +19,18 @@ from idenick_rest_api_v0.classes.utils import (login_utils, request_utils,
                                                views_utils)
 from idenick_rest_api_v0.classes.utils.mqtt_utils import check_biometry
 from idenick_rest_api_v0.classes.views.abstract_view_set import AbstractViewSet
-from idenick_rest_api_v0.serializers import (EmployeeSerializers,
-                                             OrganizationSerializers)
+from idenick_rest_api_v0.serializers import (employee_serializers,
+                                             organization_serializers)
 
 
 class EmployeeViewSet(AbstractViewSet):
     def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False):
         result = None
         if (action == 'list') or (action == 'retrieve'):
-            result = EmployeeSerializers.FullModelSerializer if is_full \
-                else EmployeeSerializers.ModelSerializer
+            result = employee_serializers.FullModelSerializer if is_full \
+                else employee_serializers.ModelSerializer
         elif (action == 'create') or (action == 'partial_update'):
-            result = EmployeeSerializers.CreateSerializer
+            result = employee_serializers.CreateSerializer
 
         return result
 
@@ -123,7 +123,7 @@ class EmployeeViewSet(AbstractViewSet):
             result.update({'departments_count': Employee2Department.objects.filter(
                 employee_id=pk).filter(department__organization_id=login.organization_id).count()})
             if full_info:
-                organization = OrganizationSerializers.ModelSerializer(
+                organization = organization_serializers.ModelSerializer(
                     login.organization).data
 
                 result.update({'organization': organization})

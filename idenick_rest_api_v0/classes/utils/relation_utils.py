@@ -12,11 +12,11 @@ from idenick_app.models import (AbstractSimpleEntry, Department, Device,
                                 Employee2Department, Employee2Organization,
                                 Login, Organization)
 from idenick_rest_api_v0.classes.utils import login_utils
-from idenick_rest_api_v0.serializers import (DepartmentSerializers,
-                                             CheckpointSerializers,
-                                             DeviceSerializers,
-                                             EmployeeSerializers,
-                                             OrganizationSerializers)
+from idenick_rest_api_v0.serializers import (department_serializers,
+                                             checkpoint_serializers,
+                                             device_serializers,
+                                             employee_serializers,
+                                             organization_serializers)
 
 
 @dataclass
@@ -28,11 +28,11 @@ class EntityClassInfo:
 
 
 _ENTRY2CLAZZ_N_SERIALIZER = {
-    Device: EntityClassInfo(Device, DeviceSerializers.ModelSerializer, 'device_id'),
-    Checkpoint: EntityClassInfo(Checkpoint, CheckpointSerializers.ModelSerializer, 'checkpoint_id'),
-    Organization: EntityClassInfo(Organization, OrganizationSerializers.ModelSerializer, 'organization_id'),
-    Employee: EntityClassInfo(Employee, EmployeeSerializers.ModelSerializer, 'employee_id'),
-    Department: EntityClassInfo(Department, DepartmentSerializers.ModelSerializer, 'department_id'),
+    Device: EntityClassInfo(Device, device_serializers.ModelSerializer, 'device_id'),
+    Checkpoint: EntityClassInfo(Checkpoint, checkpoint_serializers.ModelSerializer, 'checkpoint_id'),
+    Organization: EntityClassInfo(Organization, organization_serializers.ModelSerializer, 'organization_id'),
+    Employee: EntityClassInfo(Employee, employee_serializers.ModelSerializer, 'employee_id'),
+    Department: EntityClassInfo(Department, department_serializers.ModelSerializer, 'department_id'),
 }
 
 _CLASS_NAME2CLASS = {

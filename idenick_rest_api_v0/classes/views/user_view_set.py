@@ -13,20 +13,20 @@ from idenick_app.models import Login, Organization
 from idenick_rest_api_v0.classes.utils import (login_utils, request_utils,
                                                utils, views_utils)
 from idenick_rest_api_v0.classes.views.abstract_view_set import AbstractViewSet
-from idenick_rest_api_v0.serializers import (LoginSerializer,
-                                             OrganizationSerializers,
-                                             UserSerializer)
+from idenick_rest_api_v0.serializers import (login_serializers,
+                                             organization_serializers,
+                                             user_serializers)
 
 
 class _UserViewSet(AbstractViewSet):
     def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False):
         result = None
         if (action == 'list') or (action == 'retrieve'):
-            result = LoginSerializer.FullSerializer
+            result = login_serializers.FullSerializer
         elif action == 'create':
-            result = LoginSerializer.CreateSerializer
+            result = login_serializers.CreateSerializer
         elif action == 'partial_update':
-            result = LoginSerializer.UpdateSerializer
+            result = login_serializers.UpdateSerializer
 
         return result
 
@@ -47,7 +47,7 @@ class _UserViewSet(AbstractViewSet):
         if not base_filter:
             name_filter = request_utils.get_request_param(request, 'name')
             if name_filter is not None:
-                users_ids = set(map(lambda i: UserSerializer(i).data.get('id'), User.objects.annotate(
+                users_ids = set(map(lambda i: user_serializers.ModelSerializer(i).data.get('id'), User.objects.annotate(
                     full_name_1=Concat('last_name', Value(' '), 'first_name'),
                     full_name_2=Concat('first_name', Value(' '), 'last_name'),
                 ).filter(Q(full_name_1__icontains=name_filter) | Q(full_name_2__icontains=name_filter)
@@ -86,7 +86,7 @@ class _UserViewSet(AbstractViewSet):
         result = self._retrieve_data(
             request=request, pk=pk, queryset=self._get_queryset(request))
         if 'full' in request.GET:
-            result.update({'organization': OrganizationSerializers.ModelSerializer(
+            result.update({'organization': organization_serializers.ModelSerializer(
                 Organization.objects.get(id=result.get('data').get('organization'))).data})
 
         return request_utils.response(result)

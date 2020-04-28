@@ -9,16 +9,16 @@ from idenick_app.models import Checkpoint, Checkpoint2Organization, Login
 from idenick_rest_api_v0.classes.utils import (login_utils, request_utils,
                                                views_utils)
 from idenick_rest_api_v0.classes.views.abstract_view_set import AbstractViewSet
-from idenick_rest_api_v0.serializers import CheckpointSerializers
+from idenick_rest_api_v0.serializers import checkpoint_serializers
 
 
 class CheckpointViewSet(AbstractViewSet):
     def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False):
         result = None
         if (action == 'list') or (action == 'retrieve'):
-            result = CheckpointSerializers.ModelSerializer
+            result = checkpoint_serializers.ModelSerializer
         elif (action == 'create') or (action == 'partial_update'):
-            result = CheckpointSerializers.CreateSerializer
+            result = checkpoint_serializers.CreateSerializer
 
         return result
 

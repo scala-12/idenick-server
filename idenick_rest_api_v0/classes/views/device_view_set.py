@@ -10,20 +10,20 @@ from idenick_app.models import (
 from idenick_rest_api_v0.classes.utils import (login_utils, request_utils,
                                                utils, views_utils)
 from idenick_rest_api_v0.classes.views.abstract_view_set import AbstractViewSet
-from idenick_rest_api_v0.serializers import (CheckpointSerializers,
-                                             DeviceSerializers,
-                                             OrganizationSerializers)
+from idenick_rest_api_v0.serializers import (checkpoint_serializers,
+                                             organization_serializers,
+                                             device_serializers)
 
 
 class DeviceViewSet(AbstractViewSet):
     def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False):
         result = None
         if (action == 'list') or (action == 'retrieve'):
-            result = DeviceSerializers.ModelSerializer
+            result = device_serializers.ModelSerializer
         elif action == 'create':
-            result = DeviceSerializers.CreateSerializer
+            result = device_serializers.CreateSerializer
         elif action == 'partial_update':
-            result = DeviceSerializers.UpdateSerializer
+            result = device_serializers.UpdateSerializer
 
         return result
 
@@ -96,13 +96,13 @@ class DeviceViewSet(AbstractViewSet):
                         entity.update(dropped_at=dropped_at.isoformat())
                         result.update(data=entity)
 
-                result.update({'organization': OrganizationSerializers.ModelSerializer(
+                result.update({'organization': organization_serializers.ModelSerializer(
                     Organization.objects.get(id=login.organization_id)).data})
 
             checkpoint_id = entity.get('checkpoint')
             if checkpoint_id is not None:
                 result.update({'checkpoint':
-                               CheckpointSerializers.ModelSerializer(
+                               checkpoint_serializers.ModelSerializer(
                                    Checkpoint.objects.get(id=checkpoint_id)).data})
 
         return request_utils.response(result)

@@ -8,7 +8,7 @@ from typing import Optional
 import paho.mqtt.client as mqtt
 
 from idenick_app.models import Employee
-from idenick_rest_api_v0.serializers import EmployeeSerializers
+from idenick_rest_api_v0.serializers import employee_serializers
 
 USE_SSL = False
 USERNAME = None
@@ -305,7 +305,7 @@ def registrate_biometry(employee: Employee, mqtt_id: str, biometry_data: str,
         else:
             employee = None
             if options.get('employee') is not None:
-                employee = EmployeeSerializers.ModelSerializer(
+                employee = employee_serializers.ModelSerializer(
                     options.get('employee')).data
             options.update(result=RegistrationResult(success=not options.get('disabled'),
                                                      employee=employee,

@@ -20,11 +20,11 @@ from idenick_app.models import (Checkpoint, Checkpoint2Organization,
                                 Employee2Organization, EmployeeRequest, Login,
                                 Organization)
 from idenick_rest_api_v0.classes.utils import login_utils, request_utils, utils
-from idenick_rest_api_v0.serializers import (DepartmentSerializers,
-                                             DeviceSerializers,
-                                             EmployeeRequestSerializers,
-                                             EmployeeSerializers,
-                                             OrganizationSerializers)
+from idenick_rest_api_v0.serializers import (department_serializers,
+                                             device_serializers,
+                                             employee_request_serializers,
+                                             employee_serializers,
+                                             organization_serializers)
 
 
 class _ReportType(Enum):
@@ -254,7 +254,7 @@ def _find_report_department(request: EmployeeRequest,
 @dataclass
 class RequestsInfo:
     def __init__(self, queryset, count, extra):
-        self.data = EmployeeRequestSerializers.ModelSerializer(
+        self.data = employee_request_serializers.ModelSerializer(
             queryset, many=True).data
         self.count = count
         self.extra = extra
@@ -283,22 +283,22 @@ def get_employees_requests(request) -> RequestsInfo:
         id__in=employees_ids)
 
     extra.update(employees=utils.get_objects_by_id(
-        EmployeeSerializers.ModelSerializer, queryset=employees_queryset))
+        employee_serializers.ModelSerializer, queryset=employees_queryset))
 
     if show_organization:
         if login.role == Login.CONTROLLER:
             extra.update(organizations={
-                login.organization_id: OrganizationSerializers.ModelSerializer(
+                login.organization_id: organization_serializers.ModelSerializer(
                     Organization.objects.get(pk=login.organization_id)).data})
 
     if show_department:
-        extra.update({'department': DepartmentSerializers.ModelSerializer(
+        extra.update({'department': department_serializers.ModelSerializer(
             Department.objects.get(id=entity_id)).data})
 
     if show_device:
         devices_ids = set(report_queryset.values_list('device_id', flat=True))
         extra.update(devices=utils.get_objects_by_id(
-            DeviceSerializers.ModelSerializer, clazz=Device, ids=devices_ids))
+            device_serializers.ModelSerializer, clazz=Device, ids=devices_ids))
 
     return RequestsInfo(queryset=report_queryset, count=info.count, extra=extra)
 
@@ -567,11 +567,11 @@ class ReportInfo:
         for line in info.lines:
             if not (line.employee.id in employees):
                 employees.update(
-                    {line.employee.id: EmployeeSerializers.ModelSerializer(line.employee).data})
+                    {line.employee.id: employee_serializers.ModelSerializer(line.employee).data})
             if not ((line.department is None) or (line.department.id in departments)):
                 departments.update(
                     {line.department.id:
-                        DepartmentSerializers.ModelSerializer(line.department).data})
+                        department_serializers.ModelSerializer(line.department).data})
 
         extra = {'employees': employees, 'departments': departments}
 
