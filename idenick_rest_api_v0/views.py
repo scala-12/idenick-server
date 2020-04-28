@@ -1,29 +1,14 @@
 """views"""
-from typing import Optional
-
-from django.contrib.auth.models import User
-from django.db.models.expressions import Value
-from django.db.models.functions.text import Concat
-from django.db.models.query_utils import Q
 from django.shortcuts import get_object_or_404
-from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from idenick_app.classes.constants.identification import algorithm_constants
-from idenick_app.models import (Checkpoint, Checkpoint2Organization,
-                                Department, Device, Device2Organization,
-                                Employee, Employee2Department,
-                                Employee2Organization,
-                                IndentificationTepmplate, Login, Organization)
+from idenick_app.models import Employee, Login
 from idenick_rest_api_v0.classes.utils import (login_utils, relation_utils,
-                                               report_utils, request_utils,
-                                               utils, views_utils)
-from idenick_rest_api_v0.classes.utils.mqtt_utils import (BiometryType,
-                                                          check_biometry)
+                                               report_utils, views_utils)
+from idenick_rest_api_v0.classes.utils.mqtt_utils import BiometryType
 from idenick_rest_api_v0.classes.utils.mqtt_utils import \
     registrate_biometry as registrate_biometry_by_device
-from idenick_rest_api_v0.classes.views.abstract_view_set import AbstractViewSet
 from idenick_rest_api_v0.classes.views.checkpoint_view_set import \
     CheckpointViewSet
 from idenick_rest_api_v0.classes.views.department_view_set import \
@@ -34,13 +19,6 @@ from idenick_rest_api_v0.classes.views.organization_view_set import \
     OrganizationViewSet
 from idenick_rest_api_v0.classes.views.user_view_set import (
     ControllerViewSet, RegistratorViewSet, UserViewSet)
-from idenick_rest_api_v0.serializers import (CheckpointSerializers,
-                                             DepartmentSerializers,
-                                             DeviceSerializers,
-                                             EmployeeSerializers,
-                                             LoginSerializer,
-                                             OrganizationSerializers,
-                                             UserSerializer)
 
 
 @api_view(['GET'])
