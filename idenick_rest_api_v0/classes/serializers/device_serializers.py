@@ -1,5 +1,6 @@
 """Serializers for device-model"""
 
+from django.http.request import QueryDict
 from rest_framework import serializers
 
 from idenick_app.classes.utils import date_utils
@@ -14,7 +15,7 @@ class CreateSerializer(serializers.ModelSerializer):
     timezone = TimeValueField()
     checkpoint = serializers.SerializerMethodField()
 
-    def get_checkpoint(self, obj):
+    def get_checkpoint(self, obj: QueryDict):
         checkpoint = obj.get('checkpoint', '')
         result = None
         if isinstance(checkpoint, str):
@@ -40,7 +41,7 @@ class UpdateSerializer(serializers.ModelSerializer):
     timezone = TimeValueField()
     checkpoint = serializers.SerializerMethodField()
 
-    def get_checkpoint(self, obj):
+    def get_checkpoint(self, obj: QueryDict):
         checkpoint = obj.get('checkpoint', '')
         result = None
         if isinstance(checkpoint, str):
@@ -66,10 +67,10 @@ class ModelSerializer(serializers.ModelSerializer):
     timezone = serializers.SerializerMethodField()
     checkpoint = serializers.PrimaryKeyRelatedField(read_only=True)
 
-    def get_timezone(self, obj):
+    def get_timezone(self, obj: Device):
         return None if obj.timezone is None else date_utils.duration_to_str(obj.timezone)
 
-    def get_organizations_count(self, obj):
+    def get_organizations_count(self, obj: Device):
         return get_related_entities_count(Device2Organization,
                                           {'device_id': obj.id}, Organization,
                                           'organization')

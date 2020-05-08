@@ -13,8 +13,7 @@ from idenick_app.models import Login, Organization
 from idenick_rest_api_v0.classes.utils import (login_utils, request_utils,
                                                utils, views_utils)
 from idenick_rest_api_v0.classes.views.abstract_view_set import AbstractViewSet
-from idenick_rest_api_v0.serializers import (login_serializers,
-                                             organization_serializers,
+from idenick_rest_api_v0.serializers import (organization_serializers,
                                              user_serializers)
 
 
@@ -22,11 +21,11 @@ class _UserViewSet(AbstractViewSet):
     def get_serializer_by_action(self, action: str, is_full: Optional[bool] = False):
         result = None
         if (action == 'list') or (action == 'retrieve'):
-            result = login_serializers.FullSerializer
+            result = user_serializers.FullSerializer
         elif action == 'create':
-            result = login_serializers.CreateSerializer
+            result = user_serializers.CreateSerializer
         elif action == 'partial_update':
-            result = login_serializers.UpdateSerializer
+            result = user_serializers.UpdateSerializer
 
         return result
 

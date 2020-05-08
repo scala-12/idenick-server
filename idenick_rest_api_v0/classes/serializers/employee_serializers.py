@@ -22,30 +22,31 @@ class ModelSerializer(serializers.ModelSerializer):
     timesheet_start = serializers.SerializerMethodField()
     timesheet_end = serializers.SerializerMethodField()
 
-    def get_timesheet_start(self, obj: Employee):
+    def _get_timesheet(self, obj: Employee, is_start: bool):
         result = None
         if 'organization' in self.context:
-            organization_id = self.context['organization']
-            result = obj.get_timesheet_start(
-                organization_id=organization_id)
+            organization_filter = {
+                'organization_id': self.context['organization']}
+            result = obj.get_timesheet_start(**organization_filter) \
+                if is_start \
+                else obj.get_timesheet_end(**organization_filter)
 
         return result
+
+    def get_timesheet_start(self, obj: Employee):
+        return self._get_timesheet(obj, True)
 
     def get_timesheet_end(self, obj: Employee):
-        result = None
-        if 'organization' in self.context:
-            organization_id = self.context['organization']
-            result = obj.get_timesheet_end(
-                organization_id=organization_id)
-
-        return result
+        return self._get_timesheet(obj, False)
 
     def get_departments_count(self, obj: Employee):
         organization = None
         if 'organization' in self.context:
             organization = self.context['organization']
 
-        return obj.get_departments_count(organization_id=organization)
+        return 0\
+            if organization is None else \
+            obj.get_departments_count(organization_id=organization)
 
     class Meta:
         model = Employee

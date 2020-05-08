@@ -7,7 +7,7 @@ from typing import Optional
 from idenick_app.models import (AbstractEntry, Checkpoint, Device, Employee,
                                 Login, Organization)
 from idenick_rest_api_v0.classes.utils import request_utils
-from idenick_rest_api_v0.serializers import login_serializers
+from idenick_rest_api_v0.serializers import user_serializers
 
 
 class ErrorMessage(Enum):
@@ -75,7 +75,7 @@ def get_deleted_filter(request, base_filter: bool, with_dropped: bool) -> Delete
 def get_authentification(user):
     result = None
     if (user.is_authenticated):
-        result = login_serializers.FullSerializer(
+        result = user_serializers.FullSerializer(
             Login.objects.get(user=user)).data
 
     return result

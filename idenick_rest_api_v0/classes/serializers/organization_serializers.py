@@ -36,29 +36,29 @@ class ModelSerializer(serializers.ModelSerializer):
     checkpoints_count = serializers.SerializerMethodField()
     timezone = serializers.SerializerMethodField()
 
-    def get_timezone(self, obj):
+    def get_timezone(self, obj: Organization):
         return None if obj.timezone is None else date_utils.duration_to_str(obj.timezone)
 
-    def get_departments_count(self, obj):
+    def get_departments_count(self, obj: Organization):
         return Department.objects.filter(organization=obj, dropped_at=None).count()
 
-    def get_controllers_count(self, obj):
+    def get_controllers_count(self, obj: Organization):
         return Login.objects.filter(role=Login.CONTROLLER, organization=obj,
                                     dropped_at=None).count()
 
-    def get_registrators_count(self, obj):
+    def get_registrators_count(self, obj: Organization):
         return Login.objects.filter(role=Login.REGISTRATOR, organization=obj,
                                     dropped_at=None).count()
 
-    def get_employees_count(self, obj):
+    def get_employees_count(self, obj: Organization):
         return get_related_entities_count(Employee2Organization, {'organization_id': obj.id},
                                           Employee, 'employee')
 
-    def get_devices_count(self, obj):
+    def get_devices_count(self, obj: Organization):
         return get_related_entities_count(Device2Organization, {'organization_id': obj.id},
                                           Device, 'device')
 
-    def get_checkpoints_count(self, obj):
+    def get_checkpoints_count(self, obj: Organization):
         return get_related_entities_count(Checkpoint2Organization,
                                           {'organization_id': obj.id}, Checkpoint,
                                           'checkpoint')

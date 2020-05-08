@@ -18,7 +18,7 @@ class CreateSerializer(serializers.ModelSerializer):
             'description',
         ]
 
-    def to_representation(self, obj):
+    def to_representation(self, obj: QueryDict):
         represent = QueryDict('', mutable=True)
         represent.update(obj)
         rights = obj.get('rights', '')
@@ -35,7 +35,7 @@ class ModelSerializer(serializers.ModelSerializer):
     devices_count = serializers.SerializerMethodField()
     organizations_count = serializers.SerializerMethodField()
 
-    def get_devices_count(self, obj):
+    def get_devices_count(self, obj: Checkpoint):
         queryset = Device.objects.filter(
             checkpoint_id=obj.id, dropped_at=None)
 
@@ -48,7 +48,7 @@ class ModelSerializer(serializers.ModelSerializer):
 
         return queryset.count()
 
-    def get_organizations_count(self, obj):
+    def get_organizations_count(self, obj: Checkpoint):
         return get_related_entities_count(Checkpoint2Organization,
                                           {'checkpoint_id': obj.id}, Organization,
                                           'organization')

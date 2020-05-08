@@ -1,5 +1,6 @@
 """Serializers for department-model"""
 
+from django.http.request import QueryDict
 from rest_framework import serializers
 
 from idenick_app.models import (Department, Employee2Department,
@@ -11,11 +12,11 @@ class CreateSerializer(serializers.ModelSerializer):
     rights = serializers.SerializerMethodField()
     organization = serializers.SerializerMethodField()
 
-    def get_rights(self, obj):
+    def get_rights(self, obj: QueryDict):
         name = 'rights'
         return int(obj.get(name)) if name in obj else 0
 
-    def get_organization(self, obj):
+    def get_organization(self, obj: QueryDict):
         return Organization.objects.get(id=self.context['organization'])
 
     class Meta:
@@ -34,7 +35,7 @@ class UpdateSerializer(serializers.ModelSerializer):
     """Serializer for update department-model"""
     rights = serializers.SerializerMethodField()
 
-    def get_rights(self, obj):
+    def get_rights(self, obj: QueryDict):
         name = 'rights'
         return int(obj.get(name)) if name in obj else 0
 
@@ -54,7 +55,7 @@ class ModelSerializer(serializers.ModelSerializer):
 
     employees_count = serializers.SerializerMethodField()
 
-    def get_employees_count(self, obj):
+    def get_employees_count(self, obj: Department):
         queryset = Employee2Department.objects.filter(
             department=obj, employee__dropped_at=None, dropped_at=None)
 
