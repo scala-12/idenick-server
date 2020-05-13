@@ -60,8 +60,11 @@ class EmployeeViewSet(AbstractViewSet):
             name_filter = request_utils.get_request_param(request, 'name')
             if name_filter is not None:
                 queryset = queryset.annotate(
-                    __full_name=Concat('last_name', Value(
-                        ' '), 'first_name', Value(' '), 'patronymic'),
+                    __full_name=Concat('last_name',
+                                       Value(' '),
+                                       'first_name',
+                                       Value(' '),
+                                       'patronymic'),
                 ).filter(Q(__full_name__icontains=name_filter)
                          | Q(last_name__icontains=name_filter)
                          | Q(first_name__icontains=name_filter)
@@ -83,9 +86,9 @@ class EmployeeViewSet(AbstractViewSet):
                 id__in=department_employees.values_list('employee', flat=True))
 
         if organization_filter is not None:
-            employee_id_list = queryset.values_list('id', flat=True)
+            ids = queryset.values_list('id', flat=True)
             employees_queryset = Employee2Organization.objects.filter(
-                organization_id=organization_filter, employee_id__in=employee_id_list)
+                organization_id=organization_filter, employee_id__in=ids)
 
             if (login.role == Login.ADMIN) \
                     or (dropped_filter is views_utils.DeletedFilter.NON_DELETED.value):
@@ -120,8 +123,12 @@ class EmployeeViewSet(AbstractViewSet):
                     entity.update(dropped_at=dropped_at.isoformat())
                     result.update(data=entity)
 
-            result.update({'departments_count': Employee2Department.objects.filter(
-                employee_id=pk).filter(department__organization_id=login.organization_id).count()})
+            departments_count = Employee2Department.objects\
+                .filter(employee_id=pk)\
+                .select_related('department')\
+                .values('department', 'department__organization')\
+                .filter(department__organization=login.organization_id).count()
+            result.update({'departments_count': departments_count})
             if full_info:
                 organization = organization_serializers.ModelSerializer(
                     login.organization).data

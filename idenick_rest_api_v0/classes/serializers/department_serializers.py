@@ -62,10 +62,11 @@ class ModelSerializer(serializers.ModelSerializer):
         if 'organization' in self.context:
             organization = self.context['organization']
             if organization is not None:
+                organization_employees = Employee2Organization.objects\
+                    .filter(organization_id=organization, dropped_at=None)\
+                    .values_list('employee', flat=True)
                 queryset = queryset.filter(
-                    employee_id__in=Employee2Organization.objects
-                    .filter(organization_id=organization, dropped_at=None)
-                    .values_list('employee', flat=True))
+                    employee_id__in=organization_employees)
 
         return queryset.count()
 

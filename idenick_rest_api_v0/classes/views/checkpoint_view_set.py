@@ -46,18 +46,20 @@ class CheckpointViewSet(AbstractViewSet):
             organization_filter = request_utils.get_request_param(
                 request, 'organization', True, base_filter=base_filter)
         if organization_filter is not None:
-            group_id_list = queryset.values_list('id', flat=True)
-            groups_queryset = Checkpoint2Organization.objects.filter(
-                organization_id=organization_filter, checkpoint_id__in=group_id_list)
+            checkpoint_id_list = queryset.values_list('id', flat=True)
+            checkpoints_queryset = Checkpoint2Organization.objects.filter(
+                organization_id=organization_filter, checkpoint_id__in=checkpoint_id_list)
 
             if (login.role == Login.ADMIN) \
                     or (dropped_filter is views_utils.DeletedFilter.NON_DELETED.value):
-                groups_queryset = groups_queryset.filter(dropped_at=None)
+                checkpoints_queryset = checkpoints_queryset.filter(
+                    dropped_at=None)
             elif dropped_filter is views_utils.DeletedFilter.DELETED_ONLY.value:
-                groups_queryset = groups_queryset.exclude(dropped_at=None)
+                checkpoints_queryset = checkpoints_queryset.exclude(
+                    dropped_at=None)
 
             queryset = queryset.filter(
-                id__in=groups_queryset.values_list('checkpoint_id', flat=True))
+                id__in=checkpoints_queryset.values_list('checkpoint_id', flat=True))
 
         return queryset
 
@@ -79,8 +81,8 @@ class CheckpointViewSet(AbstractViewSet):
         serializer = serializer_class(data=request.data)
         result = None
         if serializer.is_valid():
-            group = Checkpoint(**serializer.data)
-            group.save()
+            checkpoint = Checkpoint(**serializer.data)
+            checkpoint.save()
 
             login = login_utils.get_login(request.user)
 
@@ -94,10 +96,10 @@ class CheckpointViewSet(AbstractViewSet):
             if organization is not None:
                 Checkpoint2Organization.objects.create(
                     **{'organization_id': organization,
-                       'checkpoint_id': group.id})
+                       'checkpoint_id': checkpoint.id})
 
             result = self._response4update_n_create(
-                data=group, code=status.HTTP_201_CREATED)
+                data=checkpoint, code=status.HTTP_201_CREATED)
         else:
             result = self._response4update_n_create(
                 message=self._get_validation_error_msg(serializer.errors, Checkpoint))

@@ -41,24 +41,27 @@ class OrganizationViewSet(AbstractViewSet):
         checkpoint_filter = request_utils.get_request_param(
             request, 'checkpoint', True, base_filter=base_filter)
         if checkpoint_filter is not None:
-            organization_id_list = queryset.values_list('id', flat=True)
-            queryset = queryset.filter(id__in=Checkpoint2Organization.objects.filter(
-                organization_id__in=organization_id_list).filter(dropped_at=None).filter(
-                checkpoint_id=checkpoint_filter).values_list('organization', flat=True))
+            ids = queryset.values_list('id', flat=True)
+            checkpoint_organizations = Checkpoint2Organization.objects.filter(
+                organization_id__in=ids).filter(dropped_at=None).filter(
+                checkpoint_id=checkpoint_filter).values_list('organization', flat=True)
+            queryset = queryset.filter(id__in=checkpoint_organizations)
         device_filter = request_utils.get_request_param(
             request, 'device', True, base_filter=base_filter)
         if device_filter is not None:
-            organization_id_list = queryset.values_list('id', flat=True)
-            queryset = queryset.filter(id__in=Device2Organization.objects.filter(
-                organization_id__in=organization_id_list).filter(dropped_at=None).filter(
-                device_id=device_filter).values_list('organization', flat=True))
+            ids = queryset.values_list('id', flat=True)
+            device_organizations = Device2Organization.objects.filter(
+                organization_id__in=ids).filter(dropped_at=None).filter(
+                device_id=device_filter).values_list('organization', flat=True)
+            queryset = queryset.filter(id__in=device_organizations)
         employee_filter = request_utils.get_request_param(
             request, 'employee', True, base_filter=base_filter)
         if employee_filter is not None:
-            organization_id_list = queryset.values_list('id', flat=True)
-            queryset = queryset.filter(id__in=Employee2Organization.objects.filter(
-                organization_id__in=organization_id_list).filter(dropped_at=None).filter(
-                employee_id=employee_filter).values_list('organization', flat=True))
+            ids = queryset.values_list('id', flat=True)
+            employee_organizations = Employee2Organization.objects.filter(
+                organization_id__in=ids).filter(dropped_at=None).filter(
+                employee_id=employee_filter).values_list('organization', flat=True)
+            queryset = queryset.filter(id__in=employee_organizations)
 
         return queryset
 
@@ -94,9 +97,10 @@ class OrganizationViewSet(AbstractViewSet):
         delete_restore_mode = (login.role == Login.ADMIN) \
             and (('delete' in request.data) or ('restore' in request.data))
 
-        entity: Organization = get_object_or_404(self._get_queryset(request,
-                                                                    with_dropped=delete_restore_mode),
-                                                 pk=pk)
+        entity: Organization = get_object_or_404(
+            self._get_queryset(request,
+                               with_dropped=delete_restore_mode),
+            pk=pk)
 
         result = None
         if delete_restore_mode:

@@ -93,7 +93,7 @@ class Employee(AbstractEntry):
         queryset = Employee2Department.objects.filter(
             employee_id=self.id, department__dropped_at=None, dropped_at=None)
         if org_id is not None:
-            queryset = queryset.filter(
+            queryset = queryset.select_related('department').filter(
                 department__organization=org_id)
 
         return queryset.count()

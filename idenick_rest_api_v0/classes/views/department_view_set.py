@@ -51,8 +51,9 @@ class DepartmentViewSet(AbstractViewSet):
         employee_filter = request_utils.get_request_param(
             request, 'employee', True, base_filter=base_filter)
         if employee_filter is not None:
-            queryset = queryset.filter(id__in=Employee2Department.objects.filter(
-                employee_id=employee_filter).values_list('department_id', flat=True))
+            employee_departments = Employee2Department.objects.filter(
+                employee_id=employee_filter).values_list('department_id', flat=True)
+            queryset = queryset.filter(id__in=employee_departments)
 
         return queryset
 
@@ -119,8 +120,7 @@ class DepartmentViewSet(AbstractViewSet):
 
             department_data = QueryDict('', mutable=True)
             department_data.update(request.data)
-            organization_id = {'organization': Login.objects.get(
-                user=request.user).organization_id}
+            organization_id = {'organization': login.organization_id}
             department_data.update(organization_id)
 
             valid_result = self._validate_on_update(
@@ -145,6 +145,5 @@ class DepartmentViewSet(AbstractViewSet):
         return (len(errors.keys()) == 1) \
             and errors.keys().__contains__('non_field_errors') \
             and (errors.get('non_field_errors')[0].code == 'unique') \
-            and not Department.objects.filter(Q(name=data.get('name'))
-                                              & Q(organization_id=extra.get('organization'))) \
-            .filter(~Q(id=pk)).exists()
+            and not Department.objects.filter(name=data.get('name'), organization_id=extra.get('organization')) \
+            .exclude(id=pk).exists()

@@ -42,9 +42,10 @@ class ModelSerializer(serializers.ModelSerializer):
         if 'organization' in self.context:
             organization = self.context['organization']
             if organization is not None:
+                organization_devices = Device2Organization.objects\
+                    .filter(organization_id=organization).values_list('device', flat=True)
                 queryset = queryset.filter(
-                    id__in=Device2Organization.objects
-                    .filter(organization_id=organization).values_list('device', flat=True))
+                    id__in=organization_devices)
 
         return queryset.count()
 

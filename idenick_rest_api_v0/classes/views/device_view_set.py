@@ -11,8 +11,8 @@ from idenick_rest_api_v0.classes.utils import (login_utils, request_utils,
                                                utils, views_utils)
 from idenick_rest_api_v0.classes.views.abstract_view_set import AbstractViewSet
 from idenick_rest_api_v0.serializers import (checkpoint_serializers,
-                                             organization_serializers,
-                                             device_serializers)
+                                             device_serializers,
+                                             organization_serializers)
 
 
 class DeviceViewSet(AbstractViewSet):
@@ -56,7 +56,10 @@ class DeviceViewSet(AbstractViewSet):
         checkpoint_filter = request_utils.get_request_param(
             request, 'checkpoint', True, base_filter=base_filter)
         if checkpoint_filter is not None:
-            queryset = queryset.filter(checkpoint_id=checkpoint_filter)
+            checkpoint_devices = queryset.values(
+                'id', 'checkpoint').filter(checkpoint=checkpoint_filter)\
+                .values_list('id', flat=True)
+            queryset = queryset.filter(id__in=checkpoint_devices)
 
         if organization_filter is not None:
             device_id_list = queryset.values_list('id', flat=True)
@@ -186,4 +189,4 @@ class DeviceViewSet(AbstractViewSet):
     def _alternative_valid(self, pk, data, errors, extra):
         return (len(errors.keys()) == 1) and errors.keys().__contains__('mqtt')\
             and (errors.get('mqtt')[0].code == 'unique')\
-            and not Device.objects.filter(mqtt=data.get('mqtt')).filter(~Q(id=pk)).exists()
+            and not Device.objects.filter(mqtt=data.get('mqtt')).exclude(id=pk).exists()

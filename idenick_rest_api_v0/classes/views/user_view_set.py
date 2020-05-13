@@ -46,27 +46,38 @@ class _UserViewSet(AbstractViewSet):
         if not base_filter:
             name_filter = request_utils.get_request_param(request, 'name')
             if name_filter is not None:
-                users_ids = set(map(lambda i: user_serializers.ModelSerializer(i).data.get('id'), User.objects.annotate(
-                    full_name_1=Concat('last_name', Value(' '), 'first_name'),
-                    full_name_2=Concat('first_name', Value(' '), 'last_name'),
-                ).filter(Q(full_name_1__icontains=name_filter) | Q(full_name_2__icontains=name_filter)
-                         | Q(last_name__icontains=name_filter) | Q(first_name__icontains=name_filter))))
-                queryset = queryset.filter(user_id__in=users_ids)
+                queryset = queryset.select_related('user').annotate(
+                    last_name=Concat('user__last_name', Value('')),
+                    first_name=Concat('user__first_name', Value('')),
+                    full_name_1=Concat(
+                        'user__last_name', Value(' '), 'user__first_name'),
+                    full_name_2=Concat('user__first_name',
+                                       Value(' '), 'user__last_name'),
+                ).filter(Q(full_name_1__icontains=name_filter)
+                         | Q(full_name_2__icontains=name_filter)
+                         | Q(last_name__icontains=name_filter)
+                         | Q(first_name__icontains=name_filter))
 
         login = login_utils.get_login(request.user)
         if login.role == Login.REGISTRATOR:
-            queryset = queryset.filter(organization__id=login.organization_id)
+            ids = queryset.values('id', 'organization').filter(
+                organization=login.organization_id).values_list('id', flat=True)
+            queryset = queryset.filter(id__in=ids)
 
         organization_filter = request_utils.get_request_param(
             request, 'organization', True, base_filter=base_filter)
         if organization_filter is not None:
-            queryset = queryset.filter(organization__id=organization_filter)
+            ids = queryset.values('id', 'organization').filter(
+                organization=organization_filter).values_list('id', flat=True)
+            queryset = queryset.filter(id__in=ids)
 
-        user_ids = queryset.values_list('user', flat=True)
-        exists_ids = User.objects.filter(
-            id__in=user_ids).values_list('id', flat=True)
+        right_records = queryset.all().select_related('user')
+        if len(right_records) != queryset.count():
+            removed_logins = queryset.exclude(id__in=map(
+                lambda e: e.id, list(right_records))).delete()
+            #TODO: логирование
 
-        return queryset.filter(user_id__in=exists_ids)
+        return right_records
 
     @login_utils.login_check_decorator(Login.REGISTRATOR, Login.ADMIN)
     def list(self, request):
